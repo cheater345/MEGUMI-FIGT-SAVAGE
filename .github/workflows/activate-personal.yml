@@ -27,68 +27,55 @@ jobs:
               cd /tmp/project
               unity-editor -batchmode -nographics -quit \
                 -createManualActivationFile \
-                -logFile - 2>&1 | tail -15
+                -logFile - 2>&1 | tail -8
               ls -la *.alf 2>/dev/null
             ' | tee alf-gen.log
           ls -la *.alf 2>/dev/null
           exit 0
         timeout-minutes: 30
 
-      - name: Check .alf was produced
-        id: checkalf
+      - name: Install puppeteer-core
         run: |
-          if ls Unity_*.alf >/dev/null 2>&1; then
-            echo "alf=yes" >> "$GITHUB_OUTPUT"
-            ls Unity_*.alf
-          else
-            echo "alf=no" >> "$GITHUB_OUTPUT"
-            echo "=== log tail ==="
-            tail -30 alf-gen.log 2>/dev/null || true
-          fi
+          npm init -y >/dev/null 2>&1
+          npm install puppeteer-core@23 --no-audit --no-fund 2>&1 | tail -2
 
-      - name: Browser-activate Personal license (hidden option is clicked via JS)
-        if: steps.checkalf.outputs.alf == 'yes'
+      - name: Browser-activate Personal license (with debug dumps)
         env:
           PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
         run: |
           set +e
-          ls -la /usr/bin/google-chrome* 2>/dev/null || which google-chrome-stable 2>/dev/null
-          npm install -g unity-license-activate@0.3.9 unity-verify-code@0.2.4 2>&1 | tail -3
+          ls -la /usr/bin/google-chrome* 2>/dev/null
           ALF=$(ls Unity_*.alf | head -1)
           echo "Using $ALF"
-          TOTP_ARGS=""
-          if [ -n "$UNITY_TOTP_KEY" ]; then TOTP_ARGS="--authenticator-key $UNITY_TOTP_KEY"; fi
-          EMAIL_ARGS=""
-          if [ -n "$EMAIL_PASSWORD" ]; then EMAIL_ARGS="--email-password $EMAIL_PASSWORD"; fi
-          unity-license-activate \
-            "$UNITY_EMAIL" \
-            "$UNITY_PASSWORD" \
-            "$ALF" $EMAIL_ARGS $TOTP_ARGS 2>&1 | tail -60
-          echo "--- resulting files in workspace ---"
+          node scripts/activate-license.mjs "$ALF" 2>&1 | tail -120
+          echo "--- ulf files ---"
           ls -la *.ulf 2>/dev/null
-          find . -maxdepth 2 -name "*.ulf" 2>/dev/null
+          echo "--- exit was $? ---"
           exit 0
         timeout-minutes: 20
 
-      - name: Upload .ulf as artifact (if created)
+      - name: Upload debug dumps and license as artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: UnityLicense-ulf
-          path: '*.ulf'
+          name: activation-dumps
+          path: |
+            page_*.html
+            page_*.png
+            *.ulf
+            alf-gen.log
+            scripts/activate-license.mjs
           if-no-files-found: ignore
 
       - name: Print next steps
         run: |
           if ls *.ulf >/dev/null 2>&1; then
-            echo "SUCCESS: UnityLicense-ulf artifact should now exist in this run."
-            echo "1. Download it, open Unity_v*.ulf as text and copy ALL contents."
+            echo "SUCCESS: a .ulf license file was produced and uploaded in activation-dumps."
+            echo "1. Download the activation-dumps artifact, open the .ulf file as text and copy ALL contents."
             echo "2. Settings > Secrets > New repository secret: UNITY_LICENSE"
             echo "3. Paste the full contents (it is a single long line)."
             echo "4. Run the Build workflow."
           else
-            echo "NO .ulf was produced. Check the activation log above; it may show:"
-            echo "  - a captcha/follow screen (needs manual browser)",
-            echo "  - 2FA prompt (set EMAIL_PASSWORD or UNITY_TOTP_KEY secrets)",
-            echo "  - 'Unity no longer supports manual activation of Personal licenses' (server-side rejection)."
+            echo "NO .ulf was produced. The dump files (page_*.html/png) in the activation-dumps artifact show exactly what the page displayed."
             echo "Paste the log output here so we can fix it."
           fi
