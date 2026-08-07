@@ -86,11 +86,12 @@ unity-editor -batchmode -quit -projectPath . \
 
 The `.github/workflows/build.yml` build on push/PR, and attach artifacts to GitHub Releases when a release tag is published.
 
-Required repo secrets:
+**Unity license (free Personal, no PC needed):** add your free Unity account as secrets — `UNITY_EMAIL` and `UNITY_PASSWORD` (activate at https://id.unity.com). game-ci activates the license online inside the CI container. Unity no longer supports `.alf`/serial activation for Personal licenses.
+
+Other secrets (optional, for signing the release APK):
 
 | Secret                          | Purpose |
 |---------------------------------|---------|
-| `UNITY_LICENSE`                 | game-ci Unity license activation |
 | `STEEL_TEMPEST_KEYSTORE_B64`    | base64-encoded Android release keystore |
 | `STEEL_TEMPEST_KEYSTORE_PASS`   | keystore password |
 | `STEEL_TEMPEST_KEY_ALIAS`       | key alias |
