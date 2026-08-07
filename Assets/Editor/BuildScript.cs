@@ -2,7 +2,9 @@ using System;
 using System.IO;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace SteelTempest.EditorTools
 {
@@ -109,9 +111,22 @@ namespace SteelTempest.EditorTools
             }
             if (list.Count == 0)
             {
-                Debug.LogWarning("[SteelTempest] No scenes found; building with an empty scene list.");
+                Debug.LogWarning("[SteelTempest] No scenes found; generating a Boot scene.");
+                list.Add(EnsureBootScene());
             }
             return list.ToArray();
+        }
+
+        private static string EnsureBootScene()
+        {
+            const string scenePath = "Assets/Scenes/Boot.unity";
+            Directory.CreateDirectory("Assets/Scenes");
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            var root = new GameObject("Game");
+            root.AddComponent<SteelTempest.Core.Bootstrap.GameBootstrap>();
+            EditorSceneManager.SaveScene(scene, scenePath);
+            Debug.Log("[SteelTempest] Generated boot scene: " + scenePath);
+            return scenePath;
         }
 
         private static string BuildRoot() =>
