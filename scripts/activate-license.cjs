@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /* Activate a Unity Personal license by uploading the .alf at license.unity3d.com/manual.
- * The "Personal" option is hidden on the page; the script force-clicks it via JS.
+ * Handles the current flow: optional login redirect (login.unity.com), cookie banner,
+ * hidden "Personal" option (force-clicked via JS), then downloads the .ulf file.
  * Usage:
- *   UNITY_EMAIL=... UNITY_PASSWORD=... node scripts/activate-license.mjs <file.alf>
+ *   UNITY_EMAIL=... UNITY_PASSWORD=... node scripts/activate-license.cjs <file.alf>
  * Requires a Chrome binary (default: google-chrome / chromium) or PUPPETEER_EXECUTABLE_PATH.
  */
 const fs = require('fs');
@@ -27,21 +28,84 @@ async function dump(page, tag) {
     const html = await page.evaluate(() => document.documentElement.outerHTML);
     fs.writeFileSync(`page_${tag}.html`, html);
     await page.screenshot({ path: `page_${tag}.png`, fullPage: true });
-    const txt = await page.evaluate(() => (document.body.innerText || '').replace(/\n{2,}/g, '\n').slice(0, 3000));
-    const radios = await page.evaluate(() =>
-      [...document.querySelectorAll('input[type=radio], input[type=checkbox], input[type=submit], button')].map(i => ({
-        id: i.id, name: i.name, value: i.value, type: i.type, cls: (i.className || '').toString(),
-        hidden: !(i.offsetWidth || i.offsetHeight)
-      }))
-    );
+    const txt = await page.evaluate(() => (document.body.innerText || '').replace(/\n{2,}/g, '\n').slice(0, 2500));
     console.log(`\n===== DUMP[${tag}] url=${await page.url()} =====`);
     console.log(txt);
-    console.log('--- interactive elements ---');
-    console.log(JSON.stringify(radios, null, 0));
     console.log('=================================\n');
   } catch (e) {
     console.log('dump ' + tag + ' failed: ' + e.message);
   }
+}
+
+async function dismissCookieBanner(page) {
+  const sel = '#onetrust-accept-btn-handler, .accept-recommended-btn-handler, #onetrust-reject-all-handler';
+  const el = await page.$(sel);
+  if (el) { await el.click().catch(() => {}); await sleep(1500); console.log('[cookie] banner dismissed'); }
+}
+
+async function fillVisibleInput(page, predicate, value) {
+  return page.evaluate((predText, v) => {
+    const pred = new Function('el', predText);
+    const inputs = [...document.querySelectorAll('input')];
+    const el = inputs.find(i => pred(i));
+    if (!el) return false;
+    el.focus();
+    const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+    setter.call(el, v);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }, predicate.toString(), value);
+}
+
+async function fillEmailAndPassword(page, email, password) {
+  // Email step.
+  let filled = await fillVisibleInput(page,
+    el => (el.id === 'email' || el.name === 'email' || el.type === 'email' || el.autocomplete === 'email'),
+    email);
+  console.log('[login] email filled: ' + filled);
+  await sleep(800);
+  await dump(page, '02_email_filled');
+  // Click the primary submit/next button.
+  await clickPrimaryButton(page, '03_login_email_submitted');
+
+  // Password step (may appear on same or new page).
+  for (let i = 0; i < 6; i++) {
+    await sleep(2000);
+    const pw = await page.$('input[type=password], #password, input[name=password]');
+    if (pw) {
+      console.log('[login] password field found, attempt ' + i);
+      const f = await fillVisibleInput(page, el => el.type === 'password', password);
+      console.log('[login] password filled: ' + f);
+      await sleep(800);
+      await clickPrimaryButton(page, '04_login_password_submitted');
+      break;
+    }
+    if (await page.$('input[name="licenseFile"]')) { console.log('[login] reached license page'); break; }
+  }
+}
+
+async function clickPrimaryButton(page, dumpTag) {
+  const clicked = await page.evaluate(() => {
+    const buttons = [...document.querySelectorAll('button, input[type=submit], input[type=button], a')];
+    const candidates = buttons.filter(b => {
+      const t = (b.innerText || b.value || '').trim().toLowerCase();
+      if (!t) return false;
+      const skip = ['cookie', 'accept', 'reject', 'manage', 'clear', 'filter', 'cancel', 'language', 'search'];
+      if (skip.some(s => t.includes(s))) return false;
+      return t.includes('continue') || t.includes('next') || t.includes('sign in') || t.includes('log in') ||
+             t.includes('submit') || t.includes('proceed') || t.includes('agree') || t.includes('enter');
+    });
+    if (!candidates.length) return 'none';
+    const btn = candidates[candidates.length - 1];
+    btn.click();
+    return btn.innerText || btn.value || btn.tagName;
+  });
+  console.log('[click] primary button: ' + clicked);
+  await sleep(2500);
+  if (dumpTag) await dump(page, dumpTag);
+  return clicked !== 'none';
 }
 
 (async () => {
@@ -59,101 +123,76 @@ async function dump(page, tag) {
     console.log('[1] goto license.unity3d.com/manual');
     await Promise.all([
       page.goto('https://license.unity3d.com/manual', { waitUntil: 'networkidle0', timeout: 60000 }),
-      sleep(2000)
+      sleep(3000)
     ]).catch(() => {});
     await dump(page, '01_landed');
+    await dismissCookieBanner(page);
 
-    // If a login form is present, sign in.
-    const hasLogin = await page.$('#new_conversations_create_session_form');
-    if (hasLogin) {
-      console.log('[2] Login form present, signing in...');
-      await page.evaluate((t) => { (document.querySelector('input[type=email]')).value = t; }, email);
-      await page.evaluate((t) => { (document.querySelector('input[type=password]')).value = t; }, password);
-      await Promise.all([
-        page.click('input[name="commit"]'),
-        page.waitForNavigation({ waitUntil: 'load', timeout: 20000 })
-      ]).catch(() => {});
-      await dump(page, '02_after_login');
-      // Handle possible 2FA + ToS dialogs (best effort, up to a few tries).
-      for (let i = 0; i < 8; i++) {
-        if (await page.$('button[name="conversations_accept_updated_tos_form[accept]"]')) {
-          await page.click('button[name="conversations_accept_updated_tos_form[accept]"]').catch(() => {});
-          await dump(page, `03_tos_${i}`);
-          break;
-        }
-        if (await page.$('input[name="conversations_tfa_required_form[verify_code]"]')) {
-          console.log('TOTP 2FA requested -- cannot auto-fill without UNITY_TOTP_KEY. Dumping page.');
-          await dump(page, `2fa_totp_${i}`);
-          throw 'TOTP 2FA required';
-        }
-        if (await page.$('input[name="conversations_email_tfa_required_form[code]"]')) {
-          console.log('Email 2FA requested -- provide EMAIL_PASSWORD to auto-fill. Dumping page.');
-          await dump(page, `2fa_email_${i}`);
-          throw 'Email 2FA required';
-        }
-        if (await page.$('input[name="licenseFile"]')) break;
-        await sleep(2000);
-      }
+    const url = await page.url();
+    if (url.includes('login.unity.com') || url.includes('/sign-in')) {
+      console.log('[login] on Unity sign-in page, starting login flow');
+      await fillEmailAndPassword(page, email, password);
+    } else {
+      console.log('[login] no login redirect, continuing');
     }
 
-    // Upload the alf file.
+    // Ensure we are on the license page.
+    await page.waitForSelector('input[name="licenseFile"]', { timeout: 60000 }).catch(() => {});
+    if (!(await page.$('input[name="licenseFile"]'))) {
+      console.log('[error] licenseFile input not found after login. Dumping state.');
+      await dump(page, '05_no_license_form');
+      throw 'licenseFile input not found';
+    }
+
     console.log('[3] Uploading .alf');
-    await page.waitForSelector('input[name="licenseFile"]', { timeout: 30000 });
-    await page.$eval('input[name="licenseFile"]', (el, p) => { el.files = undefined; }, alf);
     const input = await page.$('input[name="licenseFile"]');
     await input.uploadFile(path.resolve(alf));
-    await dump(page, '02_alf_selected');
+    await dump(page, '06_alf_selected');
     console.log('[4] Clicking commit to send the request file');
     await Promise.all([
       page.click('input[name="commit"]'),
       page.waitForNavigation({ waitUntil: 'load', timeout: 30000 })
     ]).catch(() => {});
     await sleep(3000);
-    await dump(page, '03_after_commit');
+    await dump(page, '07_after_commit');
 
-    // License configuration page: reveal the hidden "Personal" option and select it.
     console.log('[5] Looking for the hidden Personal option');
     const result = await page.evaluate(() => {
-      const opts = [...document.querySelectorAll('.option, .option-item, li, label')]
-        .filter(n => /personal/i.test(n.textContent || ''))
-        .map(n => ({ tag: n.tagName, cls: (n.className || '').toString(), html: n.outerHTML.slice(0, 300) }));
-      const hidden = [...document.querySelectorAll('[style*="display: none"]')].length;
+      const opts = [...document.querySelectorAll('.option, .option-item, li, label, div')]
+        .filter(n => /personal/i.test(n.textContent || '') && n.textContent.length < 120)
+        .map(n => ({ tag: n.tagName, cls: (n.className || '').toString(), txt: (n.textContent || '').slice(0, 60) }));
       const typeRadios = [...document.querySelectorAll('input[type=radio]')].map(i => ({ id: i.id, name: i.name, value: i.value }));
-      return { opts, hiddenCount: hidden, typeRadios };
+      const hiddenPersonal = [...document.querySelectorAll('[class*="option-personal"]')].map(n => n.outerHTML.slice(0, 200));
+      return { opts: opts.slice(0, 10), typeRadios, hiddenPersonal };
     });
     console.log('personal-ish elements: ' + JSON.stringify(result, null, 1));
 
-    // Unhide the personal panel if present.
+    // Unhide the personal panel if present, then click the Personal radio regardless of visibility.
     await page.evaluate(() => {
       const n = document.querySelector('.option-personal, [class*="option-personal"]');
       if (n) n.removeAttribute('style');
+      const r = document.querySelector('input[id="type_personal"][value="personal"]');
+      if (r) r.click();
     });
-    // Click the Personal radio (regardless of visibility).
     const personal = await page.$('input[id="type_personal"][value="personal"]');
-    if (personal) {
-      await page.evaluate(() => document.querySelector('input[id="type_personal"][value="personal"]').click());
-      console.log('[5b] Clicked Personal radio');
-    } else {
-      console.log('[5b] Personal radio NOT FOUND on this page');
-    }
-    const cap = await page.$('input[id="option3"][name="personal_capacity"]');
-    if (cap) {
-      await page.evaluate(() => document.querySelector('input[id="option3"][name="personal_capacity"]').click());
-    }
-    await dump(page, '04_personal_selected');
+    console.log('[5b] Personal radio clicked: ' + !!personal);
 
-    const nextBtn = await page.$('input[class="btn mb10"], input[type=submit]');
+    const cap = await page.$('input[id="option3"][name="personal_capacity"]');
+    if (cap) { await page.evaluate(() => document.querySelector('input[id="option3"][name="personal_capacity"]').click()); }
+
+    await dump(page, '08_personal_selected');
+
+    const nextBtn = await page.$('input[class="btn mb10"], input[type=submit], button[type=submit]');
     if (nextBtn) {
       console.log('[6] Clicking next/commit');
       await Promise.all([
-        page.click('input[class="btn mb10"], input[type=submit]').then(p => p).catch(() => {}),
+        page.click('input[class="btn mb10"], input[type=submit], button[type=submit]').catch(() => {}),
         page.waitForNavigation({ waitUntil: 'load', timeout: 30000 })
       ]).catch(() => {});
       await sleep(3000);
     }
-    await dump(page, '05_result');
+    await dump(page, '09_result');
 
-    // Wait for .ulf download.
     let ulf = null;
     for (let i = 0; i < 20; i++) {
       const f = fs.readdirSync(downloadPath).find(f => f.endsWith('.ulf'));
