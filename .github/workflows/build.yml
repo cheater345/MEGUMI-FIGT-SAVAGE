@@ -1,0 +1,108 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  release:
+    types: [published]
+
+env:
+  UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+  STEEL_TEMPEST_KEYSTORE_B64: ${{ secrets.STEEL_TEMPEST_KEYSTORE_B64 }}
+  STEEL_TEMPEST_KEYSTORE_PASS: ${{ secrets.STEEL_TEMPEST_KEYSTORE_PASS }}
+  STEEL_TEMPEST_KEY_ALIAS: ${{ secrets.STEEL_TEMPEST_KEY_ALIAS }}
+  STEEL_TEMPEST_KEY_PASS: ${{ secrets.STEEL_TEMPEST_KEY_PASS }}
+
+jobs:
+  build:
+    name: Build (Android + Windows)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Activate Unity license
+        uses: game-ci/unity-license-activate@v3
+        with:
+          unityVersion: 6000.0.23f1
+
+      - name: Build Android Debug APK
+        uses: game-ci/unity-builder@v4
+        with:
+          projectPath: .
+          unityVersion: 6000.0.23f1
+          targetPlatform: Android
+          buildMethod: SteelTempest.EditorTools.BuildScript.CI_AndroidDebug
+          buildName: SteelTempestDebug
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: build/AndroidDebug.apk
+          if-no-files-found: error
+
+      - name: Build Android Release APK (signed via secrets)
+        uses: game-ci/unity-builder@v4
+        with:
+          projectPath: .
+          unityVersion: 6000.0.23f1
+          targetPlatform: Android
+          buildMethod: SteelTempest.EditorTools.BuildScript.CI_AndroidRelease
+          buildName: SteelTempestRelease
+
+      - name: Upload release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-apk
+          path: build/AndroidRelease.apk
+          if-no-files-found: error
+
+      - name: Build Windows
+        uses: game-ci/unity-builder@v4
+        with:
+          projectPath: .
+          unityVersion: 6000.0.23f1
+          targetPlatform: StandaloneWindows64
+          buildMethod: SteelTempest.EditorTools.BuildScript.CI_Windows
+          buildName: SteelTempestWindows
+
+      - name: Upload Windows build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: build/Windows/**
+          if-no-files-found: error
+
+      - name: Deactivate Unity license
+        uses: game-ci/unity-license-activate@v3
+        if: always()
+        with:
+          unityVersion: 6000.0.23f1
+          arguments: -batchmode -quit -nographics -logFile -manualLicenseFile -username -password -quit
+
+  release:
+    name: Attach artifacts to GitHub Release
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.run_id }}
+          path: dist
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            dist/android-debug-apk/AndroidDebug.apk
+            dist/android-release-apk/AndroidRelease.apk
+            dist/windows-build/**

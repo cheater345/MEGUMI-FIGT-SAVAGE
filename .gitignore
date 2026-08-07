@@ -1,0 +1,46 @@
+# =========================== Unity generated ===========================
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# =========================== IDE ===========================
+.idea/
+.vs/
+.vscode/
+*.csproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# =========================== OS ===========================
+.DS_Store
+Thumbs.db
+
+# =========================== Secrets ===========================
+*.keystore
+*.jks
+secrets/
+.env
+*.env
+
+# =========================== Addressables ===========================
+[Uu]ser[Ss]ettings/Addressables/
+[Ll]ibrary/AddressableAssetsData/
+
+# =========================== Crash reports ===========================
+[Ee]nding[Ll]og.txt
+crashlytics-build.properties
