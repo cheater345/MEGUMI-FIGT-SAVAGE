@@ -45,7 +45,7 @@ async function dismissCookieBanner(page) {
 
 async function fillVisibleInput(page, predicate, value) {
   return page.evaluate((predText, v) => {
-    const pred = new Function('el', predText);
+    const pred = new Function('el', 'return ' + predText);
     const inputs = [...document.querySelectorAll('input')];
     const el = inputs.find(i => pred(i));
     if (!el) return false;
@@ -59,31 +59,40 @@ async function fillVisibleInput(page, predicate, value) {
   }, predicate.toString(), value);
 }
 
-async function fillEmailAndPassword(page, email, password) {
-  // Email step.
-  let filled = await fillVisibleInput(page,
-    el => (el.id === 'email' || el.name === 'email' || el.type === 'email' || el.autocomplete === 'email'),
-    email);
-  console.log('[login] email filled: ' + filled);
-  await sleep(800);
-  await dump(page, '02_email_filled');
-  // Click the primary submit/next button.
-  await clickPrimaryButton(page, '03_login_email_submitted');
+async function typeInto(page, selector, value) {
+  await page.waitForSelector(selector, { timeout: 20000 });
+  const el = await page.$(selector);
+  await el.click({ clickCount: 3 }).catch(() => {});
+  await el.type(value, { delay: 30 });
+}
 
-  // Password step (may appear on same or new page).
-  for (let i = 0; i < 6; i++) {
+async function fillEmailAndPassword(page, email, password) {
+  await typeInto(page, '#email, input[name="email"]', email);
+  console.log('[login] email typed');
+  await dump(page, '02_email_filled');
+  // Submit the email step with Enter (avoids clicking SSO/Cookie buttons).
+  await page.keyboard.press('Enter');
+  await sleep(3500);
+  await dump(page, '03_login_email_submitted');
+
+  // Password step.
+  for (let i = 0; i < 8; i++) {
+    if (await page.$('#password, input[type="password"]')) { break; }
     await sleep(2000);
-    const pw = await page.$('input[type=password], #password, input[name=password]');
-    if (pw) {
-      console.log('[login] password field found, attempt ' + i);
-      const f = await fillVisibleInput(page, el => el.type === 'password', password);
-      console.log('[login] password filled: ' + f);
-      await sleep(800);
-      await clickPrimaryButton(page, '04_login_password_submitted');
-      break;
-    }
-    if (await page.$('input[name="licenseFile"]')) { console.log('[login] reached license page'); break; }
   }
+  if (await page.$('#password, input[type="password"]')) {
+    await typeInto(page, '#password, input[type="password"]', password);
+    console.log('[login] password typed');
+    await sleep(800);
+    // Handle "Show password" checkbox / 2FA fields won't be auto-filled; check for them.
+    await page.keyboard.press('Enter');
+    await sleep(3500);
+  } else {
+    // Maybe it is showing 2FA or error page instead.
+    const txt = await page.evaluate(() => (document.body.innerText || '').slice(0, 1500));
+    console.log('[login] no password field found. Page text:\n' + txt);
+  }
+  await dump(page, '04_after_login');
 }
 
 async function clickPrimaryButton(page, dumpTag) {
