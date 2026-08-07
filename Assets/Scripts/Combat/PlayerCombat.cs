@@ -1,5 +1,6 @@
 using UnityEngine;
 using SteelTempest.Core.Events;
+using SteelTempest.Player;
 using SteelTempest.Pooling;
 using SteelTempest.Weapons;
 
