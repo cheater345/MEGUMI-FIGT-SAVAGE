@@ -322,6 +322,7 @@ async function clickPrimaryButton(page, dumpTag) {
         const res = await fetch('/genesis/activation/download-license', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
         if (!res.ok) return { ok: false, status: res.status, text: (await res.text()).slice(0, 300) };
         const json = await res.json();
+        if (json && json.xml) return { ok: true, xml: json.xml };
         if (json && json.data && json.data.xml) return { ok: true, xml: json.data.xml };
         return { ok: false, status: res.status, text: JSON.stringify(json).slice(0, 300) };
       });
