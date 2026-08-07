@@ -196,27 +196,56 @@ async function clickPrimaryButton(page, dumpTag) {
     await page.evaluate(() => {
       const n = document.querySelector('.option-personal, [class*="option-personal"]');
       if (n) n.removeAttribute('style');
-      const r = document.querySelector('input[id="type_personal"][value="personal"]');
-      if (r) r.click();
     });
     const personal = await page.$('input[id="type_personal"][value="personal"]');
-    console.log('[5b] Personal radio clicked: ' + !!personal);
-
+    if (personal) {
+      await page.evaluate(() => document.querySelector('input[id="type_personal"][value="personal"]').click());
+      console.log('[5b] Personal radio clicked');
+    } else {
+      console.log('[5b] Personal radio NOT FOUND on this page');
+    }
+    // Personal capacity: pick "I don't use Unity in a professional capacity".
     const cap = await page.$('input[id="option3"][name="personal_capacity"]');
-    if (cap) { await page.evaluate(() => document.querySelector('input[id="option3"][name="personal_capacity"]').click()); }
+    if (cap) {
+      await page.evaluate(() => document.querySelector('input[id="option3"][name="personal_capacity"]').click());
+      console.log('[5c] Personal capacity clicked (option3)');
+    }
 
     await dump(page, '08_personal_selected');
 
-    const nextBtn = await page.$('input[class="btn mb10"], input[type=submit], button[type=submit]');
-    if (nextBtn) {
-      console.log('[6] Clicking next/commit');
+    // Verify both radios are actually checked before submitting.
+    const checked = await page.evaluate(() => ({
+      personal: document.querySelector('input[id="type_personal"][value="personal"]')?.checked,
+      capacity: document.querySelector('input[name="personal_capacity"]:checked')?.id || null
+    }));
+    console.log('[6] checked state: ' + JSON.stringify(checked));
+
+    // Submit ONLY the Personal section's "Next" button (the page also has a serial Next).
+    const nextBtn = await page.$('input[class="btn mb10"]');
+    if (nextBtn && checked.personal && checked.capacity) {
+      console.log('[7] Clicking Personal section Next (btn mb10)');
       await Promise.all([
-        page.click('input[class="btn mb10"], input[type=submit], button[type=submit]').catch(() => {}),
+        page.click('input[class="btn mb10"]').catch(() => {}),
         page.waitForNavigation({ waitUntil: 'load', timeout: 30000 })
       ]).catch(() => {});
       await sleep(3000);
+    } else {
+      console.log('[7] Skipping submit: personal=' + checked.personal + ' capacity=' + checked.capacity);
     }
     await dump(page, '09_result');
+
+    // If a "Download license file" step appears, click it.
+    const dl = await page.$('button[type="submit"], input[type="submit"][value*="ownload"], input[name="commit"]');
+    if (dl && (await page.evaluate(() => /download/i.test(document.body.innerText || '')))) {
+      console.log('[8] Download page detected, clicking download button');
+      await Promise.all([
+        page.click('button[type="submit"], input[type="submit"][value*=""], input[name="commit"]').catch(() => {}),
+        page.waitForNavigation({ waitUntil: 'load', timeout: 30000 })
+      ]).catch(() => {});
+      await dump(page, '10_download');
+    } else {
+      console.log('[8] No obvious download page (or already on it).');
+    }
 
     let ulf = null;
     for (let i = 0; i < 20; i++) {
