@@ -5,70 +5,88 @@ on:
 
 jobs:
   activate:
-    name: Online activate + export .ulf
+    name: Browser-activate Personal license
     runs-on: ubuntu-latest
     env:
       UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
       UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+      EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+      UNITY_TOTP_KEY: ${{ secrets.UNITY_TOTP_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Activate Unity online inside container
+      - name: Generate .alf activation request file
         run: |
           set +e
           docker run --rm \
             -v "$PWD":/tmp/project \
-            -e UNITY_EMAIL="$UNITY_EMAIL" \
-            -e UNITY_PASSWORD="$UNITY_PASSWORD" \
             unityci/editor:ubuntu-6000.0.81f1-base-3.2.2 \
             bash -c '
               set +e
               cd /tmp/project
-              # Online activation: sign into the Unity account and obtain a license.
               unity-editor -batchmode -nographics -quit \
-                -username "$UNITY_EMAIL" \
-                -password "$UNITY_PASSWORD" \
-                -logFile - 2>&1 | tee /tmp/project/activation.log
-              echo "--- locating license files ---"
-              ls -la "$HOME/.local/share/unity3d" "$HOME/.local/share/unity3d/Unity" 2>/dev/null
-              find / -name "*.ulf" -not -path "/proc/*" 2>/dev/null | head -20
-              # Copy the license file (if generated) into the workspace.
-              while IFS= read -r f; do
-                cp "$f" /tmp/project/Unity_lic.ulf 2>/dev/null
-              done < <(find "$HOME/.local/share/unity3d" /root/.local/share/unity3d -name "*.ulf" 2>/dev/null)
-            '
+                -createManualActivationFile \
+                -logFile - 2>&1 | tail -15
+              ls -la *.alf 2>/dev/null
+            ' | tee alf-gen.log
+          ls -la *.alf 2>/dev/null
           exit 0
         timeout-minutes: 30
 
-      - name: Show activation log tail
-        if: always()
+      - name: Check .alf was produced
+        id: checkalf
         run: |
-          tail -40 activation.log 2>/dev/null || echo "no log"
-
-      - name: Check if .ulf was produced
-        id: check
-        run: |
-          if ls Unity_lic.ulf >/dev/null 2>&1; then
-            echo "found=yes"
+          if ls Unity_*.alf >/dev/null 2>&1; then
+            echo "alf=yes"
+            ls Unity_*.alf
           else
-            echo "found=no"
+            echo "alf=no"
+            echo "=== log tail ==="
+            tail -30 alf-gen.log 2>/dev/null || true
           fi
 
+      - name: Browser-activate Personal license (hidden option is clicked via JS)
+        if: steps.checkalf.outputs.alf == 'yes'
+        run: |
+          set +e
+          npm install -g unity-license-activate@0.3.9 unity-verify-code@0.2.4 2>&1 | tail -3
+          ALF=$(ls Unity_*.alf | head -1)
+          echo "Using $ALF"
+          TOTP_ARGS=""
+          if [ -n "$UNITY_TOTP_KEY" ]; then TOTP_ARGS="--authenticator-key $UNITY_TOTP_KEY"; fi
+          EMAIL_ARGS=""
+          if [ -n "$EMAIL_PASSWORD" ]; then EMAIL_ARGS="--email-password $EMAIL_PASSWORD"; fi
+          unity-license-activate \
+            "$UNITY_EMAIL" \
+            "$UNITY_PASSWORD" \
+            "$ALF" $EMAIL_ARGS $TOTP_ARGS 2>&1 | tail -60
+          echo "--- resulting files in workspace ---"
+          ls -la *.ulf 2>/dev/null
+          find . -maxdepth 2 -name "*.ulf" 2>/dev/null
+          exit 0
+        timeout-minutes: 20
+
       - name: Upload .ulf as artifact (if created)
-        if: steps.check.outputs.found == 'yes'
+        if: steps.checkalf.outputs.alf == 'yes'
         uses: actions/upload-artifact@v4
         with:
           name: UnityLicense-ulf
-          path: Unity_lic.ulf
-          if-no-files-found: error
+          path: '*.ulf'
+          if-no-files-found: ignore
 
       - name: Print next steps
         run: |
-          echo "If a Unity_lic-ulf artifact exists:"
-          echo "  1. Download it, open it as text and copy ALL contents."
-          echo "  2. Settings > Secrets > New repository secret: UNITY_LICENSE"
-          echo "  3. Paste the full contents."
-          echo "  4. Run the Build workflow."
-          echo
-          echo "If there is NO valid artifact, open the activation log (printed above) and paste the error here."
+          if ls *.ulf >/dev/null 2>&1; then
+            echo "SUCCESS: UnityLicense-ulf artifact should now exist in this run."
+            echo "1. Download it, open Unity_v*.ulf as text and copy ALL contents."
+            echo "2. Settings > Secrets > New repository secret: UNITY_LICENSE"
+            echo "3. Paste the full contents (it is a single long line)."
+            echo "4. Run the Build workflow."
+          else
+            echo "NO .ulf was produced. Check the activation log above; it may show:"
+            echo "  - a captcha/follow screen (needs manual browser)",
+            echo "  - 2FA prompt (set EMAIL_PASSWORD or UNITY_TOTP_KEY secrets)",
+            echo "  - 'Unity no longer supports manual activation of Personal licenses' (server-side rejection)."
+            echo "Paste the log output here so we can fix it."
+          fi
