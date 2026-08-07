@@ -120,15 +120,31 @@ async function clickPrimaryButton(page, dumpTag) {
   await client.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath });
 
   try {
-    console.log('[1] goto license.unity3d.com/manual');
-    await Promise.all([
-      page.goto('https://license.unity3d.com/manual', { waitUntil: 'networkidle0', timeout: 60000 }),
-      sleep(3000)
-    ]).catch(() => {});
+    // License page sometimes hits api.unity.com redirect loops in headless Chrome.
+    // Clear site data and retry a few times.
+    let url;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (attempt > 0) {
+        console.log('[goto] retry attempt ' + attempt + ', clearing cookies');
+        await page.evaluate(() => localStorage.clear()).catch(() => {});
+        const client2 = await page.target().createCDPSession().catch(() => client);
+        await client2.send('Network.clearBrowserCookies').catch(() => {});
+        await sleep(3000);
+      }
+      await Promise.all([
+        page.goto('https://license.unity3d.com/manual', { waitUntil: 'domcontentloaded', timeout: 45000 })
+          .catch(e => console.log('[goto] navigation error (attempt ' + attempt + '): ' + e.message)),
+        sleep(2500)
+      ]);
+      url = await page.url();
+      console.log('[goto] attempt ' + attempt + ' url=' + url);
+      if (!url.includes('chromewebdata') && !url.startsWith('chrome-error')) break;
+    }
+    await sleep(2000);
     await dump(page, '01_landed');
     await dismissCookieBanner(page);
 
-    const url = await page.url();
+    url = await page.url();
     if (url.includes('login.unity.com') || url.includes('/sign-in')) {
       console.log('[login] on Unity sign-in page, starting login flow');
       await fillEmailAndPassword(page, email, password);
