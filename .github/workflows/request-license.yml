@@ -12,7 +12,7 @@ jobs:
         run: |
           docker run --rm \
             -v "$PWD":/tmp/project \
-            unityci/editor:ubuntu-6000.0.23f1-base \
+            unityci/editor:ubuntu-6000.0.81f1-base-3.2.2 \
             bash -c "cd /tmp/project && unity-editor -batchmode -nographics -quit -createManualActivationFile -projectPath /tmp/project -logFile - || true"
         timeout-minutes: 30
 
@@ -20,7 +20,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ManualActivationFile
-          path: ./*.alf
+          path: ./Unity_v6000.0.81f1.alf
           if-no-files-found: error
 
       - name: Print instructions

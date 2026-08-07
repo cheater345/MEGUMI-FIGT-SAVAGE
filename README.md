@@ -33,20 +33,20 @@ Assets/
     Pooling/      Generic object pool
     UI/           HUD controller + camera shake
 Packages/         UPM manifest (URP, Input System, Addressables, 2D, TMP, tests)
-ProjectSettings/  Unity 6.0 (6000.0.23f1)
+ProjectSettings/  Unity 6.0 (6000.0.81f1)
 docs/             Architecture, gameplay, build, CI, testing, performance
 .github/workflows/build.yml
 ```
 
 ## Requirements
 
-- **Unity 6000.0.23f1** (Unity 6 LTS) with **Android Build Support** (OpenJDK/SDK via Unity Hub) and **Windows Build Support**.
+- **Unity 6000.0.81f1** (Unity 6 LTS) with **Android Build Support** (OpenJDK/SDK via Unity Hub) and **Windows Build Support**.
 - Git + [Git LFS](https://git-lfs.com/) (large binaries, if any, are tracked via LFS).
 
 ## Quick start
 
 1. Clone the repo.
-2. Open the folder as a **Unity project** (6000.0.23f1). Let packages import.
+2. Open the folder as a **Unity project** (6000.0.81f1). Let packages import.
 3. Run menu **Tools > Steel Tempest > Generate Placeholder Sprites** to create the placeholder silhouettes under `Assets/Art/Generated`.
 4. Open the **Boot/Main scene** (add one scene to Build Settings; the scene list is also needed for CI builds) and press **Play**.
 

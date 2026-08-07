@@ -2,7 +2,7 @@
 
 ## Unity version
 
-- **6000.0.23f1** (Unity 6 LTS) — see `ProjectSettings/ProjectVersion.txt`.
+- **6000.0.81f1** (Unity 6 LTS) — see `ProjectSettings/ProjectVersion.txt`.
 
 ## Required build support
 
