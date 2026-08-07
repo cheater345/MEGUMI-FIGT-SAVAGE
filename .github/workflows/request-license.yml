@@ -5,30 +5,30 @@ on:
 
 jobs:
   request-activation:
-    name: Generate activation file
+    name: Generate activation file (cloud, no PC needed)
     runs-on: ubuntu-latest
     steps:
-      - name: Request manual activation file
-        id: getManualLicense
-        uses: game-ci/unity-request-activation-file@v2
-        with:
-          unityVersion: 6000.0.23f1
+      - name: Generate manual activation file (.alf)
+        run: |
+          docker run --rm \
+            -v "$PWD":/tmp/project \
+            unityci/editor:ubuntu-6000.0.23f1-base \
+            bash -c "cd /tmp/project && unity-editor -batchmode -nographics -quit -createManualActivationFile -projectPath /tmp/project -logFile - || true"
+        timeout-minutes: 30
 
       - name: Upload manual activation file
         uses: actions/upload-artifact@v4
         with:
           name: ManualActivationFile
-          path: ${{ steps.getManualLicense.outputs.artifactPath }}
+          path: ./*.alf
           if-no-files-found: error
 
       - name: Print instructions
         run: |
-          echo "Step 1: Download the ManualActivationFile artifact from this run."
-          echo "Step 2: Open https://license.unity3d.com/manual on your phone/PC browser."
-          echo "Step 3: Upload the .alf file, complete the form, download the .ulf license file."
-          echo "Step 4: Copy the ENTIRE text content of the .ulf file."
-          echo "Step 5: Add it as the UNITY_LICENSE secret:"
-          echo "      Settings > Secrets and variables > Actions > New repository secret."
-          echo "Step 6: Re-run the 'Build' workflow - it will then build the APKs."
-          echo
-          echo "License file name pattern: Unity_v6000.0.23f1.alf (in the artifact zip)"
+          echo "1. Download the ManualActivationFile artifact from this run."
+          echo "2. Open https://license.unity3d.com/manual on your phone browser."
+          echo "3. Upload the .alf file and complete the form."
+          echo "4. Download the returned .ulf file and copy its ENTIRE text content."
+          echo "5. In the repo: Settings > Secrets and variables > Actions > New repository secret."
+          echo "   Name: UNITY_LICENSE  Value: paste the whole .ulf content."
+          echo "6. Run the 'Build' workflow - it will now build the APKs."
