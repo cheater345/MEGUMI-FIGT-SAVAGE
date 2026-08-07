@@ -59,7 +59,7 @@ async function dump(page, tag) {
     console.log('[1] goto license.unity3d.com/manual');
     await Promise.all([
       page.goto('https://license.unity3d.com/manual', { waitUntil: 'networkidle0', timeout: 60000 }),
-      page.waitForTimeout(2000)
+      sleep(2000)
     ]).catch(() => {});
     await dump(page, '01_landed');
 
