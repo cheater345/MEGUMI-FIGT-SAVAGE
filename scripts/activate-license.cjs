@@ -312,21 +312,23 @@ async function clickPrimaryButton(page, dumpTag) {
     }
     await dump(page, '09_result');
 
-    // If a "Download license file" step appears, click it.
+    // If a "Download license file" step appears, the download is handled via AJAX
+    // POST /genesis/activation/download-license which returns the license XML.
     let ulf = null;
     if (await page.$('input[name="commit"][value*="ownload"]')) {
-      console.log('[8] Download page detected, clicking download button');
-      await Promise.all([
-        page.click('input[name="commit"][value*="ownload"]').catch(() => {}),
-        sleep(4000)
-      ]);
+      console.log('[8] Download page detected, fetching license XML via download-license endpoint');
       await dump(page, '10_download');
-      // Wait for the download event to save the file.
-      for (let i = 0; i < 15; i++) {
-        if (fs.existsSync(expectedUlf) && fs.statSync(expectedUlf).size > 0) { ulf = expectedUlf; break; }
-        const f = fs.readdirSync(downloadPath).find(f => f.endsWith('.ulf'));
-        if (f) { ulf = path.join(downloadPath, f); break; }
-        await sleep(3000);
+      const xml = await page.evaluate(async () => {
+        const res = await fetch('/genesis/activation/download-license', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        if (!res.ok) return { ok: false, status: res.status, text: (await res.text()).slice(0, 300) };
+        const json = await res.json();
+        if (json && json.data && json.data.xml) return { ok: true, xml: json.data.xml };
+        return { ok: false, status: res.status, text: JSON.stringify(json).slice(0, 300) };
+      });
+      console.log('[8] AJAX license response: ' + JSON.stringify(xml).slice(0, 200));
+      if (xml.ok) {
+        fs.writeFileSync(expectedUlf, xml.xml);
+        if (fs.existsSync(expectedUlf) && fs.statSync(expectedUlf).size > 0) { ulf = expectedUlf; }
       }
     } else {
       console.log('[8] No obvious download page.');
