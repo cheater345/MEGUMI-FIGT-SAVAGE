@@ -100,7 +100,16 @@ namespace SteelTempest.EditorTools
             }
             if (list.Count == 0)
             {
-                Debug.LogWarning("[SteelTempest] No enabled scenes; building with an empty scene list.");
+                Debug.LogWarning("[SteelTempest] No enabled scenes in build settings; scanning Assets for scenes.");
+                foreach (var sceneGuid in UnityEditor.AssetDatabase.FindAssets("t:Scene"))
+                {
+                    var scenePath = UnityEditor.AssetDatabase.GUIDToAssetPath(sceneGuid);
+                    if (scenePath.StartsWith("Assets/")) list.Add(scenePath);
+                }
+            }
+            if (list.Count == 0)
+            {
+                Debug.LogWarning("[SteelTempest] No scenes found; building with an empty scene list.");
             }
             return list.ToArray();
         }
