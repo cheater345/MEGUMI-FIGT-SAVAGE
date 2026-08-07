@@ -1,0 +1,74 @@
+name: Activate Unity Personal License
+
+on:
+  workflow_dispatch:
+
+jobs:
+  activate:
+    name: Online activate + export .ulf
+    runs-on: ubuntu-latest
+    env:
+      UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Activate Unity online inside container
+        run: |
+          set +e
+          docker run --rm \
+            -v "$PWD":/tmp/project \
+            -e UNITY_EMAIL="$UNITY_EMAIL" \
+            -e UNITY_PASSWORD="$UNITY_PASSWORD" \
+            unityci/editor:ubuntu-6000.0.81f1-base-3.2.2 \
+            bash -c '
+              set +e
+              cd /tmp/project
+              # Online activation: sign into the Unity account and obtain a license.
+              unity-editor -batchmode -nographics -quit \
+                -username "$UNITY_EMAIL" \
+                -password "$UNITY_PASSWORD" \
+                -logFile - 2>&1 | tee /tmp/project/activation.log
+              echo "--- locating license files ---"
+              ls -la "$HOME/.local/share/unity3d" "$HOME/.local/share/unity3d/Unity" 2>/dev/null
+              find / -name "*.ulf" -not -path "/proc/*" 2>/dev/null | head -20
+              # Copy the license file (if generated) into the workspace.
+              while IFS= read -r f; do
+                cp "$f" /tmp/project/Unity_lic.ulf 2>/dev/null
+              done < <(find "$HOME/.local/share/unity3d" /root/.local/share/unity3d -name "*.ulf" 2>/dev/null)
+            '
+          exit 0
+        timeout-minutes: 30
+
+      - name: Show activation log tail
+        if: always()
+        run: |
+          tail -40 activation.log 2>/dev/null || echo "no log"
+
+      - name: Check if .ulf was produced
+        id: check
+        run: |
+          if ls Unity_lic.ulf >/dev/null 2>&1; then
+            echo "found=yes"
+          else
+            echo "found=no"
+          fi
+
+      - name: Upload .ulf as artifact (if created)
+        if: steps.check.outputs.found == 'yes'
+        uses: actions/upload-artifact@v4
+        with:
+          name: UnityLicense-ulf
+          path: Unity_lic.ulf
+          if-no-files-found: error
+
+      - name: Print next steps
+        run: |
+          echo "If a Unity_lic-ulf artifact exists:"
+          echo "  1. Download it, open it as text and copy ALL contents."
+          echo "  2. Settings > Secrets > New repository secret: UNITY_LICENSE"
+          echo "  3. Paste the full contents."
+          echo "  4. Run the Build workflow."
+          echo
+          echo "If there is NO valid artifact, open the activation log (printed above) and paste the error here."
