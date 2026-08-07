@@ -14,7 +14,7 @@ namespace SteelTempest.Core.Events
         private static EventBus _instance;
         public static EventBus Instance => _instance ??= new EventBus();
 
-        private EventBus() { }
+        public EventBus() { }
 
         public void Subscribe<T>(Action<T> handler) where T : struct
         {

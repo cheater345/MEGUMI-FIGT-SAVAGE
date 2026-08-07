@@ -15,7 +15,7 @@ namespace SteelTempest.Core.Di
         private readonly Dictionary<Type, Func<object>> _factories = new();
         private readonly Dictionary<Type, object> _singletons = new();
 
-        private ServiceLocator() { }
+        public ServiceLocator() { }
 
         /// <summary>Registers a factory used to create the service on first resolution.</summary>
         public ServiceLocator Register<TInterface>(Func<TInterface> factory)
