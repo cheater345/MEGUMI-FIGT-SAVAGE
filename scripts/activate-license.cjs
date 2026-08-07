@@ -149,8 +149,17 @@ async function clickPrimaryButton(page, dumpTag) {
   });
   const page = await browser.newPage();
   const downloadPath = process.cwd();
-  const client = await page.target().createCDPSession();
-  await client.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath });
+  const expectedUlf = path.join(downloadPath, 'Unity_lic.ulf');
+  // Listen for downloads via Puppeteer's events (more reliable than CDP setDownloadBehavior).
+  page.on('download', async d => {
+    console.log('[download] event received: ' + d.suggestedFilename());
+    try {
+      await d.saveAs(expectedUlf);
+      console.log('[download] saved to ' + expectedUlf);
+    } catch (e) {
+      console.log('[download] saveAs failed: ' + e.message);
+    }
+  });
 
   try {
     // License page sometimes hits api.unity.com redirect loops in headless Chrome.
@@ -160,8 +169,6 @@ async function clickPrimaryButton(page, dumpTag) {
       if (attempt > 0) {
         console.log('[goto] retry attempt ' + attempt + ', clearing cookies');
         await page.evaluate(() => localStorage.clear()).catch(() => {});
-        const client2 = await page.target().createCDPSession().catch(() => client);
-        await client2.send('Network.clearBrowserCookies').catch(() => {});
         await sleep(3000);
       }
       await Promise.all([
@@ -259,26 +266,36 @@ async function clickPrimaryButton(page, dumpTag) {
     await dump(page, '09_result');
 
     // If a "Download license file" step appears, click it.
-    const dl = await page.$('button[type="submit"], input[type="submit"][value*="ownload"], input[name="commit"]');
-    if (dl && (await page.evaluate(() => /download/i.test(document.body.innerText || '')))) {
+    let ulf = null;
+    if (await page.$('input[name="commit"][value*="ownload"]')) {
       console.log('[8] Download page detected, clicking download button');
       await Promise.all([
-        page.click('button[type="submit"], input[type="submit"][value*=""], input[name="commit"]').catch(() => {}),
-        page.waitForNavigation({ waitUntil: 'load', timeout: 30000 })
-      ]).catch(() => {});
+        page.click('input[name="commit"][value*="ownload"]').catch(() => {}),
+        sleep(4000)
+      ]);
       await dump(page, '10_download');
+      // Wait for the download event to save the file.
+      for (let i = 0; i < 15; i++) {
+        if (fs.existsSync(expectedUlf) && fs.statSync(expectedUlf).size > 0) { ulf = expectedUlf; break; }
+        const f = fs.readdirSync(downloadPath).find(f => f.endsWith('.ulf'));
+        if (f) { ulf = path.join(downloadPath, f); break; }
+        await sleep(3000);
+      }
     } else {
-      console.log('[8] No obvious download page (or already on it).');
+      console.log('[8] No obvious download page.');
     }
-
-    let ulf = null;
-    for (let i = 0; i < 20; i++) {
-      const f = fs.readdirSync(downloadPath).find(f => f.endsWith('.ulf'));
-      if (f) { ulf = f; break; }
-      await sleep(3000);
+    if (!ulf) {
+      // Fallback: scan workspace and download dir for any .ulf
+      for (let i = 0; i < 20; i++) {
+        const f = fs.readdirSync(downloadPath).find(f => f.endsWith('.ulf'));
+        if (f) { ulf = path.join(downloadPath, f); break; }
+        await sleep(3000);
+      }
     }
+    await dump(page, '10_download');
     if (ulf) {
       console.log('SUCCESS: downloaded ' + ulf + ' (' + fs.statSync(ulf).size + ' bytes)');
+      console.log('CONTENT_HEAD ' + fs.readFileSync(ulf, 'utf8').slice(0, 80).replace(/\n/g, ' '));
     } else {
       console.log('NO .ulf downloaded. See dump files and screenshot.');
     }
