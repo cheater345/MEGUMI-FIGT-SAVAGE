@@ -47,7 +47,7 @@ jobs:
           ls -la /usr/bin/google-chrome* 2>/dev/null
           ALF=$(ls Unity_*.alf | head -1)
           echo "Using $ALF"
-          node scripts/activate-license.mjs "$ALF" 2>&1 | tail -120
+          node scripts/activate-license.cjs "$ALF" 2>&1 | tail -120
           echo "--- ulf files ---"
           ls -la *.ulf 2>/dev/null
           echo "--- exit was $? ---"
@@ -64,7 +64,7 @@ jobs:
             page_*.png
             *.ulf
             alf-gen.log
-            scripts/activate-license.mjs
+            scripts/activate-license.cjs
           if-no-files-found: ignore
 
       - name: Print next steps
