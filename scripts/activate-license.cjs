@@ -162,9 +162,9 @@ async function clickPrimaryButton(page, dumpTag) {
   });
 
   try {
-    // License page sometimes hits api.unity.com redirect loops in headless Chrome.
-    // Clear site data and retry a few times.
+    // Go directly to the stable sign-in page (avoids license.unity3d.com redirect loops).
     let url;
+    const startUrl = 'https://login.unity.com/en/sign-in';
     for (let attempt = 0; attempt < 4; attempt++) {
       if (attempt > 0) {
         console.log('[goto] retry attempt ' + attempt + ', clearing cookies');
@@ -172,7 +172,7 @@ async function clickPrimaryButton(page, dumpTag) {
         await sleep(3000);
       }
       await Promise.all([
-        page.goto('https://license.unity3d.com/manual', { waitUntil: 'domcontentloaded', timeout: 45000 })
+        page.goto(startUrl, { waitUntil: 'domcontentloaded', timeout: 45000 })
           .catch(e => console.log('[goto] navigation error (attempt ' + attempt + '): ' + e.message)),
         sleep(2500)
       ]);
@@ -193,11 +193,31 @@ async function clickPrimaryButton(page, dumpTag) {
     }
 
     // Ensure we are on the license page.
+    if (!(await page.$('input[name="licenseFile"]'))) {
+      // After login Unity lands somewhere generic; go to the manual page now.
+      console.log('[nav] not on license form, navigating to /manual');
+      await Promise.all([
+        page.goto('https://license.unity3d.com/manual', { waitUntil: 'domcontentloaded', timeout: 45000 })
+          .catch(e => console.log('[nav] error: ' + e.message)),
+        sleep(3500)
+      ]);
+      await dump(page, '05_after_nav');
+    }
     await page.waitForSelector('input[name="licenseFile"]', { timeout: 60000 }).catch(() => {});
     if (!(await page.$('input[name="licenseFile"]'))) {
       console.log('[error] licenseFile input not found after login. Dumping state.');
       await dump(page, '05_no_license_form');
-      throw 'licenseFile input not found';
+      // Retry the manual navigation a couple of times (redirect loops are flaky).
+      for (let attempt = 0; attempt < 3 && !(await page.$('input[name="licenseFile"]')); attempt++) {
+        await page.goto('https://license.unity3d.com/manual', { waitUntil: 'domcontentloaded', timeout: 45000 })
+          .catch(() => {});
+        await sleep(4000);
+        console.log('[nav] retry ' + attempt + ' url=' + await page.url());
+      }
+      if (!(await page.$('input[name="licenseFile"]'))) {
+        await dump(page, '05_no_license_form');
+        throw 'licenseFile input not found';
+      }
     }
 
     console.log('[3] Uploading .alf');
