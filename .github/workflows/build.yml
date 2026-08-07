@@ -36,6 +36,7 @@ jobs:
           targetPlatform: Android
           buildMethod: SteelTempest.EditorTools.BuildScript.CI_AndroidDebug
           buildName: SteelTempestDebug
+          versioning: None
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
@@ -52,6 +53,7 @@ jobs:
           targetPlatform: Android
           buildMethod: SteelTempest.EditorTools.BuildScript.CI_AndroidRelease
           buildName: SteelTempestRelease
+          versioning: None
           androidKeystoreName: ${{ secrets.STEEL_TEMPEST_KEYSTORE_B64 && 'release.keystore' || '' }}
           androidKeystoreBase64: ${{ secrets.STEEL_TEMPEST_KEYSTORE_B64 }}
           androidKeystorePass: ${{ secrets.STEEL_TEMPEST_KEYSTORE_PASS }}
@@ -73,6 +75,7 @@ jobs:
           targetPlatform: StandaloneWindows64
           buildMethod: SteelTempest.EditorTools.BuildScript.CI_Windows
           buildName: SteelTempestWindows
+          versioning: None
 
       - name: Upload Windows build artifact
         uses: actions/upload-artifact@v4
