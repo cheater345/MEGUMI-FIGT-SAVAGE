@@ -175,9 +175,12 @@ async function clickPrimaryButton(page, dumpTag) {
   });
 
   try {
-    // Go directly to the stable sign-in page (avoids license.unity3d.com redirect loops).
+    // Go to sign-up page directly: /en/sign-in does a server-side redirect loop
+    // (ERR_TOO_MANY_REDIRECTS) but /en/sign-up loads fine, and the same page
+    // exposes a same-origin "Sign in" toggle that switches to the login SPA view
+    // via client-side routing (no server round-trip).
     let url;
-    const startUrl = 'https://login.unity.com/en/sign-in';
+    const startUrl = 'https://login.unity.com/en/sign-up';
     for (let attempt = 0; attempt < 4; attempt++) {
       if (attempt > 0) {
         console.log('[goto] retry attempt ' + attempt + ', clearing cookies');
