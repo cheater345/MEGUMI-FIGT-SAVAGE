@@ -70,8 +70,8 @@ async function fillEmailAndPassword(page, email, password) {
   await typeInto(page, '#email, input[name="email"]', email);
   console.log('[login] email typed');
   await dump(page, '02_email_filled');
-  // Submit the email step with Enter (avoids clicking SSO/Cookie buttons).
-  await page.keyboard.press('Enter');
+  // Submit the email step by clicking the "Continue" button.
+  await clickTextButton(page, /continue|next/i, false);
   await sleep(3500);
   await dump(page, '03_login_email_submitted');
 
@@ -84,15 +84,39 @@ async function fillEmailAndPassword(page, email, password) {
     await typeInto(page, '#password, input[type="password"]', password);
     console.log('[login] password typed');
     await sleep(800);
-    // Handle "Show password" checkbox / 2FA fields won't be auto-filled; check for them.
     await page.keyboard.press('Enter');
-    await sleep(3500);
+    await sleep(3000);
+    // If still on the sign-in page, click the "Sign in" button explicitly.
+    if (await page.$('#password, input[type="password"]')) {
+      await clickTextButton(page, 'sign in', true);
+      await sleep(3500);
+    }
   } else {
     // Maybe it is showing 2FA or error page instead.
     const txt = await page.evaluate(() => (document.body.innerText || '').slice(0, 1500));
     console.log('[login] no password field found. Page text:\n' + txt);
   }
   await dump(page, '04_after_login');
+}
+
+async function clickTextButton(page, pattern, exact) {
+  const src = (pattern instanceof RegExp) ? pattern.source : String(pattern);
+  const isExact = !!exact;
+  const clicked = await page.evaluate((patSrc, isExact) => {
+    const re = new RegExp(patSrc, 'i');
+    const holders = [...document.querySelectorAll('button, input[type=submit], input[type=button], [role=button], a')];
+    const match = holders.find(b => {
+      const t = (b.innerText || b.value || '').trim();
+      if (!t) return false;
+      return isExact ? (re.test(t) && t.length <= 60) : re.test(t);
+    });
+    if (!match) return 'none';
+    match.click();
+    return (match.innerText || match.value || '').trim();
+  }, src, isExact);
+  console.log('[click]' + src + ' -> ' + clicked);
+  await sleep(3000);
+  return clicked !== 'none';
 }
 
 async function clickPrimaryButton(page, dumpTag) {
