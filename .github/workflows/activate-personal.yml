@@ -38,18 +38,21 @@ jobs:
         id: checkalf
         run: |
           if ls Unity_*.alf >/dev/null 2>&1; then
-            echo "alf=yes"
+            echo "alf=yes" >> "$GITHUB_OUTPUT"
             ls Unity_*.alf
           else
-            echo "alf=no"
+            echo "alf=no" >> "$GITHUB_OUTPUT"
             echo "=== log tail ==="
             tail -30 alf-gen.log 2>/dev/null || true
           fi
 
       - name: Browser-activate Personal license (hidden option is clicked via JS)
         if: steps.checkalf.outputs.alf == 'yes'
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
         run: |
           set +e
+          ls -la /usr/bin/google-chrome* 2>/dev/null || which google-chrome-stable 2>/dev/null
           npm install -g unity-license-activate@0.3.9 unity-verify-code@0.2.4 2>&1 | tail -3
           ALF=$(ls Unity_*.alf | head -1)
           echo "Using $ALF"
@@ -68,7 +71,6 @@ jobs:
         timeout-minutes: 20
 
       - name: Upload .ulf as artifact (if created)
-        if: steps.checkalf.outputs.alf == 'yes'
         uses: actions/upload-artifact@v4
         with:
           name: UnityLicense-ulf
