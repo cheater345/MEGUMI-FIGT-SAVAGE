@@ -119,14 +119,7 @@ namespace SteelTempest.EditorTools
 
         private static string EnsureBootScene()
         {
-            const string scenePath = "Assets/Scenes/Boot.unity";
-            Directory.CreateDirectory("Assets/Scenes");
-            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            var root = new GameObject("Game");
-            root.AddComponent<SteelTempest.Core.Bootstrap.GameBootstrap>();
-            EditorSceneManager.SaveScene(scene, scenePath);
-            Debug.Log("[SteelTempest] Generated boot scene: " + scenePath);
-            return scenePath;
+            return BootSceneBuilder.Build();
         }
 
         private static string BuildRoot() =>
