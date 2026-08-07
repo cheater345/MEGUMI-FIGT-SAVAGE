@@ -84,12 +84,25 @@ async function fillEmailAndPassword(page, email, password) {
     await typeInto(page, '#password, input[type="password"]', password);
     console.log('[login] password typed');
     await sleep(800);
-    await page.keyboard.press('Enter');
+    // Press Enter and tolerate the navigation it triggers (login success).
+    await page.keyboard.press('Enter').catch(() => {});
+    try {
+      await Promise.race([
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),
+        sleep(4000),
+      ]).catch(() => {});
+    } catch {}
     await sleep(3000);
-    // If still on the sign-in page, click the "Sign in" button explicitly.
-    if (await page.$('#password, input[type="password"]')) {
+    // If the password field is still present it means we are still on the
+    // sign-in page, so click the "Sign in" button explicitly.
+    let stillPassword;
+    try { stillPassword = !!(await page.$('#password, input[type="password"]')); }
+    catch { stillPassword = false; }
+    if (stillPassword) {
       await clickTextButton(page, 'sign in', true);
       await sleep(3500);
+    } else {
+      console.log('[login] password submitted, navigation in progress');
     }
   } else {
     // Maybe it is showing 2FA or error page instead.
