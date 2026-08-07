@@ -185,10 +185,7 @@ async function clickPrimaryButton(page, dumpTag) {
     await dismissCookieBanner(page);
 
     url = await page.url();
-    if (url.includes('login.unity.com') || url.includes('/sign-in')) {
-      console.log('[login] on Unity sign-in page, starting login flow');
-      await fillEmailAndPassword(page, email, password);
-    } else if (url.includes('/sign-up') || (await page.$('a[href*="sign-in"]'))) {
+    if (url.includes('/sign-up') || await page.$('a[href*="sign-in"]')) {
       console.log('[login] landing on sign-up page; clicking the Sign in link');
       const clicked = await page.evaluate(() => {
         const a = [...document.querySelectorAll('a')].find(x => /sign in/i.test(x.textContent || '') && /sign-in/i.test(x.href || ''));
@@ -198,6 +195,9 @@ async function clickPrimaryButton(page, dumpTag) {
       console.log('[login] sign-in link clicked: ' + clicked);
       await sleep(3500);
       await dump(page, '01b_after_signin_toggle');
+      await fillEmailAndPassword(page, email, password);
+    } else if (url.includes('/sign-in') || url.includes('login.unity.com')) {
+      console.log('[login] on Unity sign-in page, starting login flow');
       await fillEmailAndPassword(page, email, password);
     } else {
       console.log('[login] no login redirect, continuing');
