@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using SteelTempest.Combat;
 using SteelTempest.Core.Bootstrap;
+using SteelTempest.Core.Fx;
 using SteelTempest.Economy;
 using SteelTempest.Enemies;
 using SteelTempest.Modes;
@@ -52,6 +53,7 @@ namespace SteelTempest.EditorTools
             BuildWorld(coin);
             BuildHud();
             player.AddComponent<DamageFlash>();
+            new GameObject("FxRoot", typeof(ImpactFx));
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             Debug.Log("[BootSceneBuilder] full playable scene created at " + ScenePath);
@@ -252,6 +254,108 @@ namespace SteelTempest.EditorTools
             AssetDatabase.AddObjectToAsset(sprite, asset);
             AssetDatabase.SaveAssets();
             return sprite;
+        }
+
+        /// <summary>
+        /// A tileable dark silhouette strip (city/temple skyline) for the
+        /// parallax mid-ground. Wraps horizontally so it can stretch as far
+        /// as the arena demands.
+        /// </summary>
+        private static Sprite MakeSilhouetteStrip(string name, Color colour, int pxWidth = 192, int pxHeight = 48)
+        {
+            const int pattern = 64;
+            var tex = new Texture2D(pxWidth, pxHeight, TextureFormat.RGBA32, false);
+            var empty = new Color(0f, 0f, 0f, 0f);
+            for (var y = 0; y < pxHeight; y++)
+                for (var x = 0; x < pxWidth; x++)
+                    tex.SetPixel(x, y, empty);
+
+            void R(int ox, int y, int w, int h, Color c)
+            {
+                for (var j = y; j < y + h && j < pxHeight; j++)
+                    for (var i = 0; i < w; i++)
+                        tex.SetPixel(ox + i, j, c);
+            }
+
+            void Ln(int x0, int y0, int x1, int y1, int th, Color c)
+            {
+                var r = (th + 1) / 2;
+                const int steps = 32;
+                for (var s = 0; s <= steps; s++)
+                {
+                    var t = s / (float)steps;
+                    var cx = Mathf.RoundToInt(Mathf.Lerp(x0, x1, t));
+                    var cy = Mathf.RoundToInt(Mathf.Lerp(y0, y1, t));
+                    for (var j = cy - r; j <= cy + r; j++)
+                        for (var i = cx - r; i <= cx + r; i++)
+                            if (i >= 0 && i < pxWidth && j >= 0 && j < pxHeight)
+                                tex.SetPixel(i, j, c);
+                }
+            }
+
+            var glow = new Color(0.95f, 0.72f, 0.4f);
+            for (var ox = 0; ox < pxWidth; ox += pattern)
+            {
+                // ground ridge line with slight sway
+                for (var x = 0; x < pattern; x++)
+                    R(ox + x, 6 + (x * 7 + ox * 3) % 4, 1, pxHeight - 6, colour);
+                // pagoda 1 - tiered towers
+                R(ox + 12, 14, 10, pxHeight, colour);
+                R(ox + 10, 22, 14, 4, colour);
+                Ln(ox + 8, 24, ox + 26, 24, 4, colour);
+                R(ox + 14, 30, 6, 5, colour);
+                Ln(ox + 12, 31, ox + 22, 31, 5, colour);
+                R(ox + 16, 38, 2, 7, colour);
+                R(ox + 14, 43, 6, 2, colour);
+                // pagoda windows - warm dots
+                for (var wy = 16; wy < 38; wy += 6)
+                    for (var wx = 14; wx <= 18; wx += 4)
+                        tex.SetPixel(ox + wx, wy, glow);
+                // second tower: torii-style gate
+                R(ox + 36, 12, 6, pxHeight, colour);
+                R(ox + 53, 12, 6, pxHeight, colour);
+                R(ox + 34, 22, 27, 3, colour);
+                Ln(ox + 31, 24, ox + 64, 24, 4, colour);
+                R(ox + 36, 28, 6, 5, colour);
+                R(ox + 53, 28, 6, 5, colour);
+                R(ox + 34, 27, 27, 2, colour);
+                R(ox + 42, 12, 11, 10, colour);
+            }
+
+            tex.Apply();
+            var bytes = tex.EncodeToPNG();
+            var path = Path.Combine(SpritesDir, name + ".png");
+            File.WriteAllBytes(path, bytes);
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+            var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (importer != null)
+            {
+                importer.wrapMode = TextureWrapMode.Repeat;
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+            }
+            var asset = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            var sprite = Sprite.Create(asset, new Rect(0f, 0f, asset.width, asset.height), new Vector2(0.5f, 0f), 64f);
+            AssetDatabase.AddObjectToAsset(sprite, asset);
+            AssetDatabase.SaveAssets();
+            return sprite;
+        }
+
+        /// <summary>
+        /// Subtle moonlight rim: a soft, slightly larger copy of the fighter
+        /// tinted cool blue and offset toward the moon, behind the body.
+        /// </summary>
+        private static void AddMoonRim(GameObject owner, Sprite sprite)
+        {
+            var rim = new GameObject("MoonRim");
+            rim.transform.SetParent(owner.transform, false);
+            rim.transform.localPosition = new Vector3(0.06f, 0.1f, 0f);
+            var sr = rim.AddComponent<SpriteRenderer>();
+            sr.sprite = sprite;
+            sr.sortingOrder = owner.GetComponent<SpriteRenderer>() != null
+                ? owner.GetComponent<SpriteRenderer>().sortingOrder - 1
+                : 9;
+            sr.color = new Color(0.6f, 0.72f, 1f, 0.16f);
+            rim.transform.localScale = new Vector3(1.08f, 1.08f, 1f);
         }
 
         /// <summary>Bright disc (shuriken / coin) with a darker rim.</summary>
@@ -456,6 +560,7 @@ namespace SteelTempest.EditorTools
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = MakeFighterSprite("Player", new Color(0.08f, 0.1f, 0.14f), new Color(0.95f, 0.16f, 0.22f), 62f);
             sr.sortingOrder = 10;
+            AddMoonRim(go, sr.sprite);
 
             var rb = go.AddComponent<Rigidbody2D>();
             rb.gravityScale = 2.2f;
@@ -504,6 +609,7 @@ namespace SteelTempest.EditorTools
             camera.orthographicSize = 8f;
             camera.backgroundColor = new Color(0.08f, 0.09f, 0.12f);
             cam.AddComponent<AudioListener>();
+            cam.AddComponent<CameraShake>();
             cam.AddComponent<PlayerCameraFollow>();
         }
 
@@ -683,6 +789,28 @@ namespace SteelTempest.EditorTools
             backdropSr.sortingOrder = -10;
             backdrop.transform.position = new Vector3(0f, -2.6f, 1f);
             backdrop.transform.localScale = new Vector3(31f, 16f, 1f);
+
+            // Distant skyline (slow parallax): temples and gates on the ridge.
+            var ridgeGo = new GameObject("DistantRidge");
+            var ridgeSr = ridgeGo.AddComponent<SpriteRenderer>();
+            ridgeSr.sprite = MakeSilhouetteStrip("DistantRidge", new Color(0.09f, 0.1f, 0.16f));
+            ridgeSr.drawMode = SpriteDrawMode.Tiled;
+            ridgeSr.size = new Vector2(160f, 3.2f);
+            ridgeSr.sortingOrder = -9;
+            ridgeGo.transform.position = new Vector3(0f, -3.1f, 1f);
+            var ridgeLayer = ridgeGo.AddComponent<ParallaxLayer>();
+            SetField(ridgeLayer, "factor", 0.22f);
+
+            // Nearer ruins/towers (stronger parallax).
+            var towersGo = new GameObject("NearTowers");
+            var towersSr = towersGo.AddComponent<SpriteRenderer>();
+            towersSr.sprite = MakeSilhouetteStrip("NearTowers", new Color(0.13f, 0.13f, 0.2f));
+            towersSr.drawMode = SpriteDrawMode.Tiled;
+            towersSr.size = new Vector2(90f, 4.6f);
+            towersSr.sortingOrder = -8;
+            towersGo.transform.position = new Vector3(0f, -3.5f, 1f);
+            var towersLayer = towersGo.AddComponent<ParallaxLayer>();
+            SetField(towersLayer, "factor", 0.5f);
 
             // Arena floor: stone slab tiles.
             var floor = new GameObject("Floor");

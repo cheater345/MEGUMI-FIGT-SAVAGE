@@ -1,5 +1,6 @@
 using UnityEngine;
 using SteelTempest.Core.Events;
+using SteelTempest.Core.Fx;
 
 namespace SteelTempest.Combat
 {
@@ -31,11 +32,34 @@ namespace SteelTempest.Combat
 
             if (health.TakeDamage(amount, out _))
             {
+                var dir = Mathf.Sign(target.transform.position.x - source.transform.position.x);
+                var weight = 1f + Mathf.Clamp01(payload.knockback / 12f);
+                var sparkColor = target.CompareTag("Player")
+                    ? new Color(1f, 0.6f, 0.35f)
+                    : new Color(0.85f, 0.92f, 1f);
+                ImpactFx.Spawn(
+                    target.transform.position + new Vector3(dir * 0.35f, 0.65f, 0f),
+                    sparkColor,
+                    Mathf.RoundToInt(6 + weight * 6),
+                    weight);
+
                 EventBus.Instance.Publish(new DamageEvent(source, target, amount, isCrit, payload.finisher));
                 if (payload.knockback > 0f && target.TryGetComponent<Rigidbody2D>(out var rb))
                 {
-                    var dir = Mathf.Sign(target.transform.position.x - source.transform.position.x);
                     rb.AddForce(new Vector2(dir * payload.knockback, payload.launches ? payload.knockback * 0.7f : 0f), ForceMode2D.Impulse);
+                }
+                if (payload.knockback >= 7f)
+                {
+                    CameraShake.Instance?.Shake(0.5f + Mathf.Clamp01(payload.knockback / 16f));
+                }
+                if (payload.launches)
+                {
+                    CameraShake.Instance?.Shake(1.2f);
+                }
+                if (health.IsDead)
+                {
+                    ImpactFx.Spawn(target.transform.position + Vector3.up * 0.7f, Color.white, 24, 2f);
+                    CameraShake.Instance?.Shake(1.6f);
                 }
                 if (payload.finisher)
                 {
