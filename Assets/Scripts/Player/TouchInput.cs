@@ -30,6 +30,7 @@ namespace SteelTempest.Player
                 if (_rightFinger >= 0) ReleaseRightHold();
                 _leftFinger = -1;
                 _rightFinger = -1;
+                _swipedSkill = false;
                 Controls.MoveAxis = 0f;
                 return;
             }
@@ -55,6 +56,7 @@ namespace SteelTempest.Player
                             _rightStart = t.position;
                             _charged = false;
                             _blockArmed = false;
+                            _swipedSkill = false;
                         }
                         else
                         {
