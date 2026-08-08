@@ -49,4 +49,25 @@ namespace SteelTempest.Core.Events
 
         public NotificationEvent(string text) => Text = text;
     }
+
+    /// <summary>Fired when an enemy is defeated so waves/loot can react.</summary>
+    public readonly struct EnemyDefeatedEvent
+    {
+        public readonly GameObject Enemy;
+
+        public EnemyDefeatedEvent(GameObject enemy) => Enemy = enemy;
+    }
+
+    /// <summary>Fired when coins are collected or dropped.</summary>
+    public readonly struct CoinEvent
+    {
+        public readonly int Amount;
+        public readonly bool Collected;
+
+        public CoinEvent(int amount, bool collected)
+        {
+            Amount = amount;
+            Collected = collected;
+        }
+    }
 }

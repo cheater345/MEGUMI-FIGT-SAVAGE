@@ -20,6 +20,7 @@ namespace SteelTempest.Player
         private bool _leftTapped;
         private bool _charged;
         private bool _blockArmed;
+        private bool _swipedSkill;
 
         private void Update()
         {
@@ -73,7 +74,18 @@ namespace SteelTempest.Player
                 }
                 else if (t.phase == TouchPhase.Moved && t.fingerId == _rightFinger)
                 {
-                    if ((t.position - _rightStart).magnitude > 24f) _charged = true;
+                    if ((t.position - _rightStart).magnitude > 48f)
+                    {
+                        if ((t.position - _rightStart).y > 90f)
+                        {
+                            Controls.SkillPressed = true;
+                            _swipedSkill = true;
+                        }
+                        else
+                        {
+                            _charged = true;
+                        }
+                    }
                 }
                 else if (t.phase == TouchPhase.Ended && t.fingerId == _leftFinger && _leftTapped)
                 {
@@ -83,7 +95,12 @@ namespace SteelTempest.Player
                 }
                 else if (t.phase == TouchPhase.Ended && t.fingerId == _rightFinger)
                 {
-                    if (_charged)
+                    if (_swipedSkill)
+                    {
+                        _swipedSkill = false;
+                        Controls.HeavyHeld = false;
+                    }
+                    else if (_charged)
                     {
                         Controls.HeavyHeld = false;
                         Controls.HeavyPressed = true;

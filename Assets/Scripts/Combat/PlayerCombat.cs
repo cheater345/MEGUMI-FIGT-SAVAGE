@@ -25,6 +25,7 @@ namespace SteelTempest.Combat
         private float _comboResetTime;
         private bool _isCharging;
         private bool _blocking;
+        private bool _pendingLow;
         private AttackData _pendingDamage;
         private float _pendingSpawnAt;
 
@@ -100,8 +101,9 @@ namespace SteelTempest.Combat
 
             _pendingDamage = attack;
             _pendingSpawnAt = Time.time + attack.startupSeconds;
+            _pendingLow = Controls.CrouchHeld;
 
-            EventBus.Instance.Publish(new NotificationEvent("Swing"));
+            EventBus.Instance.Publish(new NotificationEvent(_pendingLow ? "Low Sweep" : "Swing"));
         }
 
         private void UpdateSpawn()
@@ -111,11 +113,15 @@ namespace SteelTempest.Combat
             if (hitboxPrefab == null) return;
 
             var hb = ObjectPool.Spawn(hitboxPrefab, transform, Vector3.zero);
-            var reach = _weapon.reachMultiplier * _pendingDamage.reach;
+            var reach = _weapon.reachMultiplier * _pendingDamage.reach * (_pendingLow ? 1.25f : 1f);
             var facing = transform.localScale.x >= 0f ? 1f : -1f;
-            hb.transform.localPosition = new Vector3(reach * facing, 0f, 0f);
+            hb.transform.localPosition = new Vector3(reach * facing, _pendingLow ? -0.45f : 0f, 0f);
+            if (_pendingLow)
+            {
+                hb.transform.localScale = new Vector3(1.2f, 0.55f, 1f);
+            }
             hb.SetUp(gameObject,
-                _weapon.baseDamage * _weapon.damageMultiplier * _pendingDamage.damage,
+                _weapon.baseDamage * _weapon.damageMultiplier * _pendingDamage.damage * (_pendingLow ? 0.85f : 1f),
                 _weapon.baseKnockback * _weapon.knockbackMultiplier * _pendingDamage.knockbackForce,
                 _pendingDamage.critChance,
                 _pendingDamage.critMultiplier,
@@ -125,6 +131,7 @@ namespace SteelTempest.Combat
             hb.gameObject.SetActive(true);
             hb.DespawnAfter(_pendingDamage.activeSeconds);
             _pendingDamage = null;
+            _pendingLow = false;
         }
 
         private void LateUpdate()

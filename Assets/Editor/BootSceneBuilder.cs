@@ -5,9 +5,11 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using SteelTempest.Combat;
 using SteelTempest.Core.Bootstrap;
+using SteelTempest.Economy;
 using SteelTempest.Enemies;
 using SteelTempest.Modes;
 using SteelTempest.Player;
+using SteelTempest.UI.Hud;
 using SteelTempest.Weapons;
 
 namespace SteelTempest.EditorTools
@@ -35,16 +37,21 @@ namespace SteelTempest.EditorTools
 
             EnsureTag("Enemy");
 
+            // Shared prefabs used by both the player kit and enemy loot.
+            var shuriken = MakeProjectilePrefab("Shuriken", MakeDiscSprite("Shuriken", new Color(0.95f, 0.85f, 0.4f), new Color(0.55f, 0.42f, 0.18f)));
+            var coin = MakeCoinPrefab("Coin", MakeDiscSprite("Coin", new Color(1f, 0.9f, 0.35f), new Color(0.7f, 0.5f, 0.15f), 14));
+
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
             var boot = new GameObject("GameBootstrap");
             boot.AddComponent<GameBootstrap>();
 
-var player = BuildPlayer();
+            var player = BuildPlayer(shuriken);
             BuildCamera(player.transform.position);
             BuildWeapon(player);
-            BuildWorld();
+            BuildWorld(coin);
             BuildHud();
+            player.AddComponent<DamageFlash>();
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             Debug.Log("[BootSceneBuilder] full playable scene created at " + ScenePath);
@@ -247,6 +254,176 @@ var player = BuildPlayer();
             return sprite;
         }
 
+        /// <summary>Bright disc (shuriken / coin) with a darker rim.</summary>
+        private static Sprite MakeDiscSprite(string name, Color inner, Color rim, int px = 16)
+        {
+            var tex = new Texture2D(px, px, TextureFormat.RGBA32, false);
+            var c = px / 2f;
+            var r = px * 0.5f - 1.5f;
+            for (var y = 0; y < px; y++)
+            {
+                for (var x = 0; x < px; x++)
+                {
+                    var d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c));
+                    if (d <= r)
+                    {
+                        var shade = 1f - Mathf.Clamp01(d / r) * 0.35f;
+                        tex.SetPixel(x, y, inner * shade);
+                    }
+                    else if (d <= r + 1.5f)
+                    {
+                        tex.SetPixel(x, y, rim);
+                    }
+                    else
+                    {
+                        tex.SetPixel(x, y, new Color(0f, 0f, 0f, 0f));
+                    }
+                }
+            }
+            tex.Apply();
+            var bytes = tex.EncodeToPNG();
+            var path = Path.Combine(SpritesDir, name + ".png");
+            File.WriteAllBytes(path, bytes);
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+            var asset = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            var sprite = Sprite.Create(asset, new Rect(0f, 0f, asset.width, asset.height), new Vector2(0.5f, 0.5f), 100f);
+            AssetDatabase.AddObjectToAsset(sprite, asset);
+            AssetDatabase.SaveAssets();
+            return sprite;
+        }
+
+        /// <summary>Stone slab tiles with grout lines and deterministic noise.</summary>
+        private static Sprite MakeStoneSprite(string name, int px = 64)
+        {
+            var tex = new Texture2D(px, px, TextureFormat.RGBA32, false);
+            var baseColour = new Color(0.16f, 0.18f, 0.22f);
+            var groutColour = new Color(0.05f, 0.06f, 0.08f);
+            for (var y = 0; y < px; y++)
+            {
+                for (var x = 0; x < px; x++)
+                {
+                    var radical = 1f + ((x * 7 + y * 13) % 5 - 2) * 0.03f;
+                    var colour = baseColour * radical;
+                    if (x % 8 == 0 || y % 8 == 0 || (x % 8 == 7 && y % 8 == 7))
+                    {
+                        colour = groutColour;
+                    }
+                    tex.SetPixel(x, y, colour);
+                }
+            }
+            tex.Apply();
+            var bytes = tex.EncodeToPNG();
+            var path = Path.Combine(SpritesDir, name + ".png");
+            File.WriteAllBytes(path, bytes);
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+            var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (importer != null)
+            {
+                importer.wrapMode = TextureWrapMode.Repeat;
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+            }
+            var asset = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            var sprite = Sprite.Create(asset, new Rect(0f, 0f, asset.width, asset.height), new Vector2(0.5f, 0.5f), 32f);
+            AssetDatabase.AddObjectToAsset(sprite, asset);
+            AssetDatabase.SaveAssets();
+            return sprite;
+        }
+
+        /// <summary>Night sky gradient + moon + star specks for the arena backdrop.</summary>
+        private static Sprite MakeBackdropSprite(string name, int px = 128)
+        {
+            var tex = new Texture2D(px, px, TextureFormat.RGBA32, false);
+            var top = new Color(0.02f, 0.03f, 0.06f);
+            var bottom = new Color(0.09f, 0.1f, 0.14f);
+            for (var y = 0; y < px; y++)
+            {
+                var t = y / (float)px;
+                var sky = Color.Lerp(bottom, top, t);
+                for (var x = 0; x < px; x++)
+                {
+                    tex.SetPixel(x, y, sky);
+                }
+            }
+
+            for (var i = 0; i < 90; i++)
+            {
+                var sx = (i * 37) % px;
+                var sy = 96 + (i * 53) % 28;
+                tex.SetPixel(sx, sy, new Color(0.85f, 0.9f, 1f, 0.9f));
+                if (sx + 1 < px) tex.SetPixel(sx + 1, sy, new Color(0.85f, 0.9f, 1f, 0.4f));
+            }
+
+            var mx = (int)(px * 0.72f);
+            var my = (int)(px * 0.68f);
+            for (var y = 0; y < px; y++)
+            {
+                for (var x = 0; x < px; x++)
+                {
+                    var d = Mathf.Sqrt((x - mx) * (x - mx) + (y - my) * (y - my));
+                    if (d <= 10f)
+                    {
+                        tex.SetPixel(x, y, new Color(0.85f, 0.88f, 0.95f));
+                    }
+                    else if (d <= 16f)
+                    {
+                        var glow = Mathf.Clamp01((16f - d) / 6f) * 0.35f;
+                        tex.SetPixel(x, y, Color.Lerp(tex.GetPixel(x, y), new Color(0.6f, 0.65f, 0.8f), glow));
+                    }
+                }
+            }
+
+            tex.Apply();
+            var bytes = tex.EncodeToPNG();
+            var path = Path.Combine(SpritesDir, name + ".png");
+            File.WriteAllBytes(path, bytes);
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+            var asset = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            var sprite = Sprite.Create(asset, new Rect(0f, 0f, asset.width, asset.height), new Vector2(0.5f, 0.5f), 100f);
+            AssetDatabase.AddObjectToAsset(sprite, asset);
+            AssetDatabase.SaveAssets();
+            return sprite;
+        }
+
+        private static Projectile MakeProjectilePrefab(string name, Sprite sprite)
+        {
+            var go = new GameObject(name, typeof(SpriteRenderer), typeof(Rigidbody2D), typeof(CircleCollider2D), typeof(Projectile));
+            var sr = go.GetComponent<SpriteRenderer>();
+            sr.sprite = sprite;
+            sr.sortingOrder = 8;
+            var rb = go.GetComponent<Rigidbody2D>();
+            rb.gravityScale = 0f;
+            rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+            var col = go.GetComponent<CircleCollider2D>();
+            col.radius = 0.16f;
+            col.isTrigger = true;
+            go.SetActive(false);
+            var path = GeneratedDir + "/" + name + ".prefab";
+            PrefabUtility.SaveAsPrefabAsset(go, path);
+            Object.DestroyImmediate(go);
+            AssetDatabase.SaveAssets();
+            return AssetDatabase.LoadAssetAtPath<Projectile>(path);
+        }
+
+        private static CoinDrop MakeCoinPrefab(string name, Sprite sprite)
+        {
+            var go = new GameObject(name, typeof(SpriteRenderer), typeof(Rigidbody2D), typeof(CircleCollider2D), typeof(CoinDrop));
+            var sr = go.GetComponent<SpriteRenderer>();
+            sr.sprite = sprite;
+            sr.sortingOrder = 9;
+            var rb = go.GetComponent<Rigidbody2D>();
+            rb.gravityScale = 1.2f;
+            rb.drag = 0.2f;
+            rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+            var col = go.GetComponent<CircleCollider2D>();
+            col.radius = 0.16f;
+            col.isTrigger = true;
+            var path = GeneratedDir + "/" + name + ".prefab";
+            PrefabUtility.SaveAsPrefabAsset(go, path);
+            Object.DestroyImmediate(go);
+            AssetDatabase.SaveAssets();
+            return AssetDatabase.LoadAssetAtPath<CoinDrop>(path);
+        }
+
         private static void SetField(Component target, string field, object value)
         {
             var so = new SerializedObject(target);
@@ -270,7 +447,7 @@ var player = BuildPlayer();
 
         // ---------- entities ----------
 
-        private static GameObject BuildPlayer()
+        private static GameObject BuildPlayer(Projectile shuriken)
         {
             var go = new GameObject("Player");
             go.tag = "Player";
@@ -304,6 +481,12 @@ var player = BuildPlayer();
             SetField(controller, "groundCheck", groundCheck);
 
             go.AddComponent<PlayerCombat>();
+
+            var strike = go.AddComponent<PlayerStrike>();
+            if (shuriken != null)
+            {
+                SetField(strike, "projectilePrefab", shuriken);
+            }
 
             go.AddComponent<TouchInput>();
             go.AddComponent<DesktopInput>();
@@ -411,12 +594,14 @@ var player = BuildPlayer();
             canvasGo.AddComponent<UnityEngine.UI.CanvasScaler>();
             canvasGo.AddComponent<UnityEngine.UI.GraphicRaycaster>();
 
+            var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+
             var textGo = new GameObject("Hint");
             textGo.transform.SetParent(canvasGo.transform, false);
             var text = textGo.AddComponent<UnityEngine.UI.Text>();
-            text.text = "LEFT: move/jump   RIGHT: tap attack, hold heavy";
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.fontSize = 22;
+            text.text = "LEFT: move/jump   RIGHT: tap attack, hold heavy   L/swipe up: SHURIKEN";
+            text.font = font;
+            text.fontSize = 20;
             text.color = Color.white;
             var rt = text.GetComponent<RectTransform>();
             rt.anchorMin = new Vector2(0f, 0f);
@@ -424,16 +609,85 @@ var player = BuildPlayer();
             rt.pivot = new Vector2(0.5f, 0f);
             rt.sizeDelta = new Vector2(0f, 44f);
             rt.anchoredPosition = new Vector2(0f, 24f);
+
+            // Coin counter (top-left).
+            var coinGo = new GameObject("Coins");
+            coinGo.transform.SetParent(canvasGo.transform, false);
+            var coinText = coinGo.AddComponent<UnityEngine.UI.Text>();
+            coinText.text = "COINS  0000";
+            coinText.font = font;
+            coinText.fontSize = 26;
+            coinText.color = new Color(1f, 0.85f, 0.3f);
+            var rtCoin = coinText.GetComponent<RectTransform>();
+            rtCoin.anchorMin = new Vector2(0f, 1f);
+            rtCoin.anchorMax = new Vector2(0f, 1f);
+            rtCoin.pivot = new Vector2(0f, 1f);
+            rtCoin.sizeDelta = new Vector2(260f, 40f);
+            rtCoin.anchoredPosition = new Vector2(14f, -10f);
+            coinGo.AddComponent<CoinCounterHud>();
+
+            // Defeat overlay (hidden until the player falls).
+            var overlayGo = new GameObject("DefeatOverlay");
+            overlayGo.transform.SetParent(canvasGo.transform, false);
+            var overlayRt = overlayGo.AddComponent<RectTransform>();
+            overlayRt.anchorMin = Vector2.zero;
+            overlayRt.anchorMax = Vector2.one;
+            overlayRt.offsetMin = Vector2.zero;
+            overlayRt.offsetMax = Vector2.zero;
+            var overlayImage = overlayGo.AddComponent<UnityEngine.UI.Image>();
+            overlayImage.color = new Color(0f, 0f, 0f, 0.72f);
+
+            var titleGo = new GameObject("Title");
+            titleGo.transform.SetParent(overlayGo.transform, false);
+            var titleText = titleGo.AddComponent<UnityEngine.UI.Text>();
+            titleText.text = "KNOCKED OUT";
+            titleText.font = font;
+            titleText.fontSize = 46;
+            titleText.fontStyle = FontStyle.Bold;
+            titleText.color = Color.white;
+            titleText.alignment = TextAnchor.MiddleCenter;
+            var titleRt = titleText.GetComponent<RectTransform>();
+            titleRt.anchorMin = new Vector2(0f, 1f);
+            titleRt.anchorMax = new Vector2(1f, 1f);
+            titleRt.sizeDelta = new Vector2(0f, 60f);
+            titleRt.anchoredPosition = new Vector2(0f, -150f);
+
+            var detailGo = new GameObject("Detail");
+            detailGo.transform.SetParent(overlayGo.transform, false);
+            var detailText = detailGo.AddComponent<UnityEngine.UI.Text>();
+            detailText.text = "You fought well, Shadow...\nTap any key to rise again.";
+            detailText.font = font;
+            detailText.fontSize = 22;
+            detailText.color = new Color(0.8f, 0.8f, 0.85f);
+            detailText.alignment = TextAnchor.UpperCenter;
+            var detailRt = detailText.GetComponent<RectTransform>();
+            detailRt.anchorMin = new Vector2(0f, 1f);
+            detailRt.anchorMax = new Vector2(1f, 1f);
+            detailRt.sizeDelta = new Vector2(0f, 80f);
+            detailRt.anchoredPosition = new Vector2(0f, -230f);
+
+            var overlay = overlayGo.AddComponent<DefeatOverlay>();
+            SetField(overlay, "panel", overlayGo);
+            SetField(overlay, "title", titleText);
+            SetField(overlay, "detail", detailText);
         }
 
         // ----- enemies + world -----
 
-        private static void BuildWorld()
+        private static void BuildWorld(CoinDrop coin)
         {
-            // Arena floor.
+            // Arena backdrop: night sky, moon and stars.
+            var backdrop = new GameObject("ArenaBackdrop");
+            var backdropSr = backdrop.AddComponent<SpriteRenderer>();
+            backdropSr.sprite = MakeBackdropSprite("NightSky");
+            backdropSr.sortingOrder = -10;
+            backdrop.transform.position = new Vector3(0f, -2.6f, 1f);
+            backdrop.transform.localScale = new Vector3(31f, 16f, 1f);
+
+            // Arena floor: stone slab tiles.
             var floor = new GameObject("Floor");
             var floorSr = floor.AddComponent<SpriteRenderer>();
-            floorSr.sprite = MakeColoredSprite("Floor", new Color(0.25f, 0.28f, 0.33f), 16f);
+            floorSr.sprite = MakeStoneSprite("Floor", 64);
             floorSr.drawMode = SpriteDrawMode.Tiled;
             floorSr.size = new Vector2(120f, 4f);
             floor.transform.position = new Vector3(0f, -3.5f, 0f);
@@ -456,12 +710,12 @@ var player = BuildPlayer();
             var assassinSpr = MakeFighterSprite("Assassin", new Color(0.1f, 0.13f, 0.17f), new Color(0.4f, 0.9f, 0.5f), 56f, slender: true, hooded: true, weapon: 1);
             var bossSpr = MakeFighterSprite("Boss", new Color(0.22f, 0.11f, 0.13f), new Color(1f, 0.25f, 0.22f), 21f, heavy: true, horned: true, weapon: 2);
             var light = BuildEnemyPrefab("Light", EnemyArchetype.Light,
-                lightSpr, 35f, 3.2f, 6f, 12f);
+                lightSpr, coin, 35f, 3.2f, 6f, 12f);
             var heavy = BuildEnemyPrefab("Heavy", EnemyArchetype.Heavy,
-                heavySpr, 90f, 1.4f, 22f, 4f);
+                heavySpr, coin, 90f, 1.4f, 22f, 4f);
             var assassin = BuildEnemyPrefab("Assassin", EnemyArchetype.Assassin,
-                assassinSpr, 40f, 4.4f, 10f, 3f);
-            var boss = BuildBossPrefab("Boss", bossSpr);
+                assassinSpr, coin, 40f, 4.4f, 10f, 3f);
+            var boss = BuildBossPrefab("Boss", bossSpr, coin);
 
             // Spawner.
             var spawnerGo = new GameObject("EnemySpawner");
@@ -496,7 +750,7 @@ var player = BuildPlayer();
             AssetDatabase.SaveAssets();
         }
 
-        private static EnemyController BuildEnemyPrefab(string name, EnemyArchetype archetype, Sprite sprite, float health, float speed, float dmg, float range)
+        private static EnemyController BuildEnemyPrefab(string name, EnemyArchetype archetype, Sprite sprite, CoinDrop coin, float health, float speed, float dmg, float range)
         {
             var go = new GameObject(name);
             go.tag = "Enemy";
@@ -518,6 +772,12 @@ var player = BuildPlayer();
             SetField(ctrl, "attackRange", range);
             SetField(ctrl, "chaseRange", 50f);
             SetField(ctrl, "leashRange", 60f);
+            go.AddComponent<DamageFlash>();
+            var loot = go.AddComponent<EnemyLootDropper>();
+            if (coin != null)
+            {
+                SetField(loot, "coinPrefab", coin);
+            }
             var prefabPath = EnemiesDir + "/" + name + ".prefab";
             PrefabUtility.SaveAsPrefabAsset(go, prefabPath);
             Object.DestroyImmediate(go);
@@ -525,7 +785,7 @@ var player = BuildPlayer();
             return AssetDatabase.LoadAssetAtPath<EnemyController>(prefabPath);
         }
 
-        private static BossController BuildBossPrefab(string name, Sprite sprite)
+        private static BossController BuildBossPrefab(string name, Sprite sprite, CoinDrop coin)
         {
             var go = new GameObject(name);
             go.tag = "Enemy";
@@ -540,7 +800,13 @@ var player = BuildPlayer();
             col.offset = new Vector2(0f, 1f);
             var healthComp = go.AddComponent<HealthComponent>();
             SetField(healthComp, "maxHealth", 320f);
-            var boss = go.AddComponent<BossController>();
+            go.AddComponent<BossController>();
+            go.AddComponent<DamageFlash>();
+            var loot = go.AddComponent<EnemyLootDropper>();
+            if (coin != null)
+            {
+                SetField(loot, "coinPrefab", coin);
+            }
             var prefabPath = EnemiesDir + "/" + name + ".prefab";
             PrefabUtility.SaveAsPrefabAsset(go, prefabPath);
             Object.DestroyImmediate(go);

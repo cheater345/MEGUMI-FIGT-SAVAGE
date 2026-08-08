@@ -1,5 +1,6 @@
 using UnityEngine;
 using SteelTempest.Combat;
+using SteelTempest.Core.Events;
 using SteelTempest.Modes;
 
 namespace SteelTempest.Enemies
@@ -7,7 +8,7 @@ namespace SteelTempest.Enemies
     /// <summary>
     /// Wave-based enemy spawner. Reads a <see cref="ModeDefinition"/>, spawns
     /// enemies at intervals up to the cap, and advances waves — inserting a
-    /// boss wave at the configured interval.
+    /// boss wave at the configured interval. Tracks defeats via the event bus.
     /// </summary>
     public sealed class EnemySpawner : MonoBehaviour
     {
@@ -24,6 +25,21 @@ namespace SteelTempest.Enemies
         private int _alive;
         private float _nextSpawnAt;
         private int _spawnedThisWave;
+
+        private void OnEnable()
+        {
+            EventBus.Instance.Subscribe<EnemyDefeatedEvent>(OnEnemyDefeated);
+        }
+
+        private void OnDisable()
+        {
+            EventBus.Instance.Unsubscribe<EnemyDefeatedEvent>(OnEnemyDefeated);
+        }
+
+        private void OnEnemyDefeated(EnemyDefeatedEvent evt)
+        {
+            _alive = Mathf.Max(0, _alive - 1);
+        }
 
         public void Configure(ModeSession modeSession)
         {
