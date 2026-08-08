@@ -25,7 +25,7 @@ namespace SteelTempest.Player
         [SerializeField] private float magicDamage = 26f;
         [SerializeField] private float magicKnockback = 14f;
         [SerializeField] private float magicSpeed = 20f;
-        [SerializeField] private float magicPierce = 2;
+        [SerializeField] private int magicPierce = 2;
 
         [Header("Constants")]
         [SerializeField] private float meterMax = 100f;

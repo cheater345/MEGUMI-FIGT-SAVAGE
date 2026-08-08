@@ -9,7 +9,7 @@ namespace SteelTempest.Combat
     /// </summary>
     public sealed class DamageFlash : MonoBehaviour
     {
-        [SerializeField] private float flashSeconds = 0.12f;
+        [SerializeField] private float _flashSeconds = 0.12f;
 
         private SpriteRenderer _sr;
         private HealthComponent _health;
