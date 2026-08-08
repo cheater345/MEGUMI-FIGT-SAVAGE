@@ -38,6 +38,14 @@ jobs:
           buildName: SteelTempestDebug
           versioning: None
 
+      - name: Upload Unity Editor log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unity-editor-log
+          path: Logs/**
+          if-no-files-found: warn
+
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
