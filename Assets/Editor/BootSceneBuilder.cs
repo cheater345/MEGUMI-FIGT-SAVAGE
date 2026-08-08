@@ -86,6 +86,167 @@ var player = BuildPlayer();
             return sprite;
         }
 
+        /// <summary>Shadow-Fight-style silhouette fighter painted procedurally on a 64px canvas.</summary>
+        private static Sprite MakeFighterSprite(
+            string name,
+            Color body,
+            Color accent,
+            float ppu = 64f,
+            bool slender = false,
+            bool heavy = false,
+            bool hooded = false,
+            bool horned = false,
+            int weapon = 0)
+        {
+            const int S = 64;
+            var tex = new Texture2D(S, S, TextureFormat.RGBA32, false);
+            var empty = new Color(0f, 0f, 0f, 0f);
+            for (var y = 0; y < S; y++)
+                for (var x = 0; x < S; x++)
+                    tex.SetPixel(x, y, empty);
+
+            var dark = body * 0.55f;
+            var edge = body * 0.8f;
+            var steel = new Color(0.72f, 0.75f, 0.8f);
+            var wood = new Color(0.4f, 0.28f, 0.2f);
+
+            void R(int x, int y, int w, int h, Color c)
+            {
+                for (var j = y; j < y + h && j >= 0 && y < S; j++)
+                    for (var i = x; i < x + w && i >= 0 && x < S; i++)
+                    {
+                        if (i < 0 || j < 0 || i >= S || j >= S) continue;
+                        tex.SetPixel(i, j, c);
+                    }
+            }
+
+            void D(int cx, int cy, int r, Color c)
+            {
+                for (var j = cy - r; j <= cy + r; j++)
+                    for (var i = cx - r; i <= cx + r; i++)
+                    {
+                        if (i < 0 || j < 0 || i >= S || j >= S) continue;
+                        var dx = i - cx;
+                        var dy = j - cy;
+                        if (dx * dx + dy * dy <= r * r) tex.SetPixel(i, j, c);
+                    }
+            }
+
+            void Ln(int x0, int y0, int x1, int y1, int th, Color c)
+            {
+                var r = (th + 1) / 2;
+                const int steps = 64;
+                for (var s = 0; s <= steps; s++)
+                {
+                    var t = s / (float)steps;
+                    D((int)Mathf.Lerp(x0, x1, t), (int)Mathf.Lerp(y0, y1, t), r, c);
+                }
+            }
+
+            // ---- silhouette (facing right) ----
+            if (heavy)
+            {
+                R(10, 1, 18, 6, body);
+                R(30, 1, 20, 6, body);       // feet
+                Ln(14, 7, 14, 20, 6, body);  // back shin+thigh
+                Ln(32, 7, 33, 20, 6, body);  // front leg
+                R(12, 18, 34, 14, body);     // torso (bulky)
+                R(16, 32, 27, 6, body);      // shoulders
+            }
+            else
+            {
+                R(8, 1, 10, 4, dark);
+                R(24, 1, 10, 4, body);       // feet
+                Ln(9, 5, 10, 20, 5, body);   // back shin+thigh
+                Ln(23, 5, 24, 20, 5, body);  // front shin+thigh
+                R(12, 18, 16, 13, body);     // torso
+                R(14, 24, 20, 9, body);      // torso upper
+                R(13, 29, 24, 4, body);      // shoulders
+            }
+
+            if (slender)
+            {
+                R(19, 18, 8, 14, empty);     // carve slim waist away
+            }
+
+            // cape / cloth trailing behind
+            Ln(12, 26, 4, 42, 6, dark);
+            Ln(8, 34, 3, 46, 3, dark);
+
+            // back arm
+            Ln(19, 30, 14, 37, 4, body);
+            D(13, 38, 2, body);
+
+            // front arm + hand
+            Ln(27, 31, 34, 36, 4, body);
+            Ln(34, 36, 42, 32, 3, body);
+            D(42, 32, 3, body);
+
+            // ---- head ----
+            R(26, 39, 7, 5, body);       // neck
+            D(32, 50, 7, body);          // skull
+            if (hooded)
+            {
+                D(32, 47, 10, body);     // hood dome
+                R(25, 45, 14, 4, dark);  // face shadow
+                D(31, 47, 3, empty);     // eye gap
+                R(36, 48, 4, 3, accent); // glowing eye in the dark
+            }
+            else
+            {
+                Ln(30, 57, 17, 64, 3, body);  // hair flowing back
+                Ln(26, 60, 20, 66, 2, body);
+                R(26, 54, 10, 2, body);       // hair cap
+            }
+
+            if (horned)
+            {
+                Ln(22, 54, 16, 70, 4, body);
+                Ln(27, 54, 36, 70, 4, body);
+                R(21, 56, 16, 4, accent);
+            }
+
+            // ---- weapons ----
+            if (weapon == 0)
+            {
+                // katana held forward
+                Ln(42, 37, 56, 40, 5, steel);      // blade back edge
+                Ln(42, 35, 57, 38, 2, new Color(0.95f, 0.97f, 1f)); // cutting edge
+                D(58, 38, 2, new Color(1f, 1f, 1f, 0.9f));
+                R(41, 33, 4, 3, wood);               // grip
+            }
+            else if (weapon == 1)
+            {
+                Ln(42, 33, 54, 27, 2, steel);         // dagger
+                D(55, 26, 2, new Color(1f, 1f, 1f, 0.9f));
+            }
+            else
+            {
+                // war axe
+                Ln(46, 12, 44, 42, 3, wood);          // haft
+                D(44, 36, 11, steel);                 // axe head
+                R(41, 33, 8, 6, empty);               // notch
+                Ln(36, 38, 52, 42, 3, new Color(0.9f, 0.93f, 1f));
+            }
+
+            // accents: belt, chest trim, glowing eyes
+            R(17, 22, 14, 2, accent * 0.7f);
+            Ln(20, 28, 30, 34, 2, accent);
+            D(38, 50, 2, accent);
+            D(34, 50, 4, accent * 0.5f);
+
+            tex.Apply();
+            var bytes = tex.EncodeToPNG();
+            var path = Path.Combine(SpritesDir, name + ".png");
+            File.WriteAllBytes(path, bytes);
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+            var asset = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            var sprite = Sprite.Create(asset, new Rect(0f, 0f, asset.width, asset.height), new Vector2(0.5f, 0.15f), ppu);
+            AssetDatabase.AddObjectToAsset(sprite, asset);
+            AssetDatabase.SaveAssets();
+            return sprite;
+        }
+
         private static void SetField(Component target, string field, object value)
         {
             var so = new SerializedObject(target);
@@ -116,7 +277,7 @@ var player = BuildPlayer();
             go.transform.position = new Vector3(0f, 0.5f, 0f);
 
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = MakeColoredSprite("Player", new Color(0.6f, 0.85f, 1f));
+            sr.sprite = MakeFighterSprite("Player", new Color(0.08f, 0.1f, 0.14f), new Color(0.95f, 0.16f, 0.22f), 62f);
             sr.sortingOrder = 10;
 
             var rb = go.AddComponent<Rigidbody2D>();
@@ -290,13 +451,17 @@ var player = BuildPlayer();
             rightWall.AddComponent<BoxCollider2D>().size = new Vector2(4f, 30f);
 
             // Enemy prefab kit.
+            var lightSpr = MakeFighterSprite("Light", new Color(0.06f, 0.12f, 0.13f), new Color(1f, 0.8f, 0.25f), 52f, slender: true, weapon: 1);
+            var heavySpr = MakeFighterSprite("Heavy", new Color(0.17f, 0.13f, 0.14f), new Color(0.95f, 0.4f, 0.12f), 42f, heavy: true, weapon: 2);
+            var assassinSpr = MakeFighterSprite("Assassin", new Color(0.1f, 0.13f, 0.17f), new Color(0.4f, 0.9f, 0.5f), 56f, slender: true, hooded: true, weapon: 1);
+            var bossSpr = MakeFighterSprite("Boss", new Color(0.22f, 0.11f, 0.13f), new Color(1f, 0.25f, 0.22f), 21f, heavy: true, horned: true, weapon: 2);
             var light = BuildEnemyPrefab("Light", EnemyArchetype.Light,
-                new Color(0.95f, 0.55f, 0.35f), 35f, 3.2f, 6f, 12f);
+                lightSpr, 35f, 3.2f, 6f, 12f);
             var heavy = BuildEnemyPrefab("Heavy", EnemyArchetype.Heavy,
-                new Color(0.75f, 0.35f, 0.6f), 90f, 1.4f, 22f, 4f);
+                heavySpr, 90f, 1.4f, 22f, 4f);
             var assassin = BuildEnemyPrefab("Assassin", EnemyArchetype.Assassin,
-                new Color(0.7f, 0.9f, 0.5f), 40f, 4.4f, 10f, 3f);
-            var boss = BuildBossPrefab("Boss", new Color(1f, 0.3f, 0.35f));
+                assassinSpr, 40f, 4.4f, 10f, 3f);
+            var boss = BuildBossPrefab("Boss", bossSpr);
 
             // Spawner.
             var spawnerGo = new GameObject("EnemySpawner");
@@ -331,12 +496,12 @@ var player = BuildPlayer();
             AssetDatabase.SaveAssets();
         }
 
-        private static EnemyController BuildEnemyPrefab(string name, EnemyArchetype archetype, Color color, float health, float speed, float dmg, float range)
+        private static EnemyController BuildEnemyPrefab(string name, EnemyArchetype archetype, Sprite sprite, float health, float speed, float dmg, float range)
         {
             var go = new GameObject(name);
             go.tag = "Enemy";
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = MakeColoredSprite(name, color, 28f);
+            sr.sprite = sprite;
             sr.sortingOrder = 5;
             var rb = go.AddComponent<Rigidbody2D>();
             rb.gravityScale = 2.2f;
@@ -360,12 +525,12 @@ var player = BuildPlayer();
             return AssetDatabase.LoadAssetAtPath<EnemyController>(prefabPath);
         }
 
-        private static BossController BuildBossPrefab(string name, Color color)
+        private static BossController BuildBossPrefab(string name, Sprite sprite)
         {
             var go = new GameObject(name);
             go.tag = "Enemy";
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = MakeColoredSprite(name, color, 40f);
+            sr.sprite = sprite;
             sr.sortingOrder = 6;
             var rb = go.AddComponent<Rigidbody2D>();
             rb.gravityScale = 2.2f;
